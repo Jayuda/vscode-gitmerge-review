@@ -400,6 +400,8 @@ export class MergeRequestPanel {
     #btn-analyze:disabled{opacity:.55;cursor:not-allowed}
     #btn-cancel{background:transparent;color:var(--vscode-descriptionForeground);border:1px solid var(--vscode-panel-border);padding:5px 10px;border-radius:var(--radius);cursor:pointer;font-size:11px;display:none}
     #btn-cancel:hover{background:var(--vscode-list-hoverBackground)}
+    #btn-copy-to-comment{background:transparent;color:var(--vscode-descriptionForeground);border:1px solid var(--vscode-panel-border);padding:5px 10px;border-radius:var(--radius);cursor:pointer;font-size:11px;display:none;align-items:center;gap:4px;white-space:nowrap}
+    #btn-copy-to-comment:hover{background:var(--vscode-list-hoverBackground);color:var(--vscode-foreground)}
     #ai-body{flex:1;overflow-y:auto;padding:14px}
     #ai-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--vscode-descriptionForeground);text-align:center;padding:16px}
     #ai-placeholder svg{opacity:.4}
@@ -548,6 +550,10 @@ export class MergeRequestPanel {
           AI Analysis
         </div>
         <div style="display:flex;gap:6px;align-items:center">
+          <button id="btn-copy-to-comment">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2.75a.25.25 0 0 1 .25-.25h12.5a.25.25 0 0 1 .25.25v8.5a.25.25 0 0 1-.25.25h-6.5a.75.75 0 0 0-.53.22L4.5 14.44v-2.19a.75.75 0 0 0-.75-.75H1.75a.25.25 0 0 1-.25-.25Zm.25-1.75C.784 1 0 1.784 0 2.75v8.5C0 12.216.784 13 1.75 13H3v2.25a.75.75 0 0 0 1.28.53l2.69-2.78H14.25c.966 0 1.75-.784 1.75-1.75v-8.5C16 1.784 15.216 1 14.25 1Z"/></svg>
+            Copy to Comment
+          </button>
           <button id="btn-cancel">Cancel</button>
           <button id="btn-analyze">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>
@@ -629,8 +635,9 @@ export class MergeRequestPanel {
   // ─── Elements ────────────────────────────────────────────────────────────
   const fileSearch       = document.getElementById('file-search');
   const noSearchResults  = document.getElementById('no-search-results');
-  const btnAnalyze       = document.getElementById('btn-analyze');
-  const btnCancel        = document.getElementById('btn-cancel');
+  const btnAnalyze          = document.getElementById('btn-analyze');
+  const btnCancel           = document.getElementById('btn-cancel');
+  const btnCopyToComment    = document.getElementById('btn-copy-to-comment');
   const btnMerge         = document.getElementById('btn-merge');
   const btnReject        = document.getElementById('btn-reject');
   const btnOpen          = document.getElementById('btn-open');
@@ -760,6 +767,12 @@ export class MergeRequestPanel {
   });
   btnCancel?.addEventListener('click', () => {
     vscode.postMessage({ type: 'cancelAnalysis' });
+  });
+  btnCopyToComment?.addEventListener('click', () => {
+    if (!aiBuffer) { return; }
+    commentTextarea.value = aiBuffer;
+    commentTextarea.focus();
+    commentTextarea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
   btnMerge?.addEventListener('click', () => {
     vscode.postMessage({ type: 'merge' });
@@ -1389,6 +1402,7 @@ export class MergeRequestPanel {
     btnAnalyze.disabled = true;
     btnAnalyze.innerHTML = '<span class="spinner"></span> Analyzing...';
     btnCancel.style.display = '';
+    btnCopyToComment.style.display = 'none';
   }
 
   function onAnalysisChunk(chunk) {
@@ -1410,6 +1424,7 @@ export class MergeRequestPanel {
       '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>' +
       ' Re-analyze';
     btnCancel.style.display = 'none';
+    btnCopyToComment.style.display = 'flex';
   }
 
   function onAnalysisError(error) {
@@ -1421,6 +1436,7 @@ export class MergeRequestPanel {
     btnAnalyze.disabled = false;
     btnAnalyze.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg> Retry';
     btnCancel.style.display = 'none';
+    btnCopyToComment.style.display = 'none';
   }
 
   // ─── Comment ──────────────────────────────────────────────────────────────
