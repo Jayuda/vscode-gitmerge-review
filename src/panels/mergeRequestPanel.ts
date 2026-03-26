@@ -322,6 +322,12 @@ export class MergeRequestPanel {
     #sidebar-resize{width:5px;flex-shrink:0;cursor:ew-resize;background:transparent;border-right:1px solid var(--vscode-panel-border);transition:background .15s}
     #sidebar-resize:hover,#sidebar-resize.dragging{background:var(--vscode-focusBorder)}
     #sidebar-header{padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);border-bottom:1px solid var(--vscode-panel-border);letter-spacing:.05em}
+    #file-search-wrap{padding:5px 8px;border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0}
+    #file-search{width:100%;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:var(--radius);padding:3px 7px;font-size:12px;outline:none;font-family:var(--vscode-font-family);box-sizing:border-box}
+    #file-search:focus{border-color:var(--vscode-focusBorder)}
+    #file-search::placeholder{color:var(--vscode-input-placeholderForeground)}
+    #no-search-results{padding:8px 12px;font-size:11px;color:var(--vscode-descriptionForeground);display:none}
+    .file-item.search-hidden{display:none}
     #file-list{flex:1;overflow-y:auto}
     .file-item{padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;border-left:2px solid transparent;user-select:none}
     .file-item:hover{background:var(--vscode-list-hoverBackground)}
@@ -475,6 +481,10 @@ export class MergeRequestPanel {
     <!-- File sidebar -->
     <div id="file-sidebar">
       <div id="sidebar-header">Files Changed (<span id="file-count">0</span>)</div>
+      <div id="file-search-wrap">
+        <input id="file-search" type="text" placeholder="Filter files..." autocomplete="off" spellcheck="false">
+      </div>
+      <div id="no-search-results">No matching files</div>
       <div id="file-list"></div>
     </div>
     <!-- Sidebar resize handle -->
@@ -605,6 +615,8 @@ export class MergeRequestPanel {
   vscode.postMessage({ type: 'ready' });
 
   // ─── Elements ────────────────────────────────────────────────────────────
+  const fileSearch       = document.getElementById('file-search');
+  const noSearchResults  = document.getElementById('no-search-results');
   const btnAnalyze       = document.getElementById('btn-analyze');
   const btnCancel        = document.getElementById('btn-cancel');
   const btnMerge         = document.getElementById('btn-merge');
@@ -809,8 +821,27 @@ export class MergeRequestPanel {
     }
   }
 
+  function filterFileList() {
+    var q = (fileSearch ? fileSearch.value : '').toLowerCase().trim();
+    var visible = 0;
+    document.querySelectorAll('.file-item').forEach(function(el) {
+      var fnameEl = el.querySelector('.fname');
+      var fname = fnameEl ? fnameEl.textContent.toLowerCase() : '';
+      var match = !q || fname.indexOf(q) !== -1;
+      el.classList.toggle('search-hidden', !match);
+      if (match) { visible++; }
+    });
+    if (noSearchResults) {
+      noSearchResults.style.display = (visible === 0 && q) ? '' : 'none';
+    }
+  }
+
+  fileSearch && fileSearch.addEventListener('input', filterFileList);
+
   function renderFileList(files, mr) {
     document.getElementById('file-count').textContent = String(files.length);
+    if (fileSearch) { fileSearch.value = ''; }
+    if (noSearchResults) { noSearchResults.style.display = 'none'; }
     const list = document.getElementById('file-list');
     list.innerHTML = '';
     files.forEach(function(f, i) {
