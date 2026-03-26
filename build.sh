@@ -71,3 +71,5 @@ echo ""
 echo " Install locally in VS Code:"
 echo "   code --install-extension $OUTFILE"
 echo ""
+
+code --install-extension "$OUTFILE"

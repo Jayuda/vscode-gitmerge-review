@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { MergeRequestProvider, MergeRequestNode } from './providers/mergeRequestProvider';
+import { MergeRequestProvider, MergeRequestNode, outputChannel } from './providers/mergeRequestProvider';
 import { MergeRequestPanel } from './panels/mergeRequestPanel';
 import { MergeRequest } from './models/types';
 
@@ -25,6 +25,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('gitmerge.configure', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'gitmerge');
+    }),
+
+    vscode.commands.registerCommand('gitmerge.showLog', () => {
+      outputChannel.show();
     }),
 
     vscode.commands.registerCommand('gitmerge.setGithubToken', async () => {
@@ -57,14 +61,6 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
-
-  // ─── On tree-item click, open the MR panel ───────────────────────────────
-  treeView.onDidChangeSelection((e) => {
-    const [selected] = e.selection;
-    if (selected instanceof MergeRequestNode) {
-      MergeRequestPanel.createOrShow(context, selected.mr);
-    }
-  }, null, context.subscriptions);
 
   // ─── Auto-refresh ─────────────────────────────────────────────────────────
   setupAutoRefresh(context, provider);

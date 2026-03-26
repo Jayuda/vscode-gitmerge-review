@@ -1,5 +1,6 @@
 import { MergeRequest, ChangedFile } from '../models/types';
 import { httpRequest, bearerHeaders } from '../utils/httpClient';
+import type * as vscode from 'vscode';
 
 interface GLMergeRequest {
   id: number;
@@ -35,16 +36,64 @@ interface GLChanges {
 }
 
 /**
- * Fetch all open MRs assigned to the authenticated user across ALL projects.
+ * Fetch all open MRs assigned to (or review-requested from) the authenticated user across ALL projects.
  */
 export async function getAssignedGitlabMRs(
   token: string,
-  gitlabUrl: string
+  gitlabUrl: string,
+  log?: vscode.OutputChannel
 ): Promise<MergeRequest[]> {
   const base = normalizeUrl(gitlabUrl);
-  const url = `${base}/api/v4/merge_requests?scope=assigned_to_me&state=opened&per_page=100`;
-  const raw = await httpRequest(url, { headers: bearerHeaders(token) }) as GLMergeRequest[];
-  return raw.map((mr) => mapMR(mr, mr.project_id, gitlabUrl));
+  const headers = bearerHeaders(token);
+
+  // Fetch current user info and assigned MRs in parallel
+  log?.appendLine(`[GitLab] GET /api/v4/user + /api/v4/merge_requests?scope=assigned_to_me`);
+  const [userResult, assignedResult] = await Promise.allSettled([
+    httpRequest(`${base}/api/v4/user`, { headers }) as Promise<{ username: string }>,
+    httpRequest(`${base}/api/v4/merge_requests?scope=assigned_to_me&state=opened&per_page=100`, { headers }) as Promise<GLMergeRequest[]>,
+  ]);
+
+  if (userResult.status === 'rejected') {
+    log?.appendLine(`[GitLab] /api/v4/user FAILED: ${userResult.reason}`);
+  } else {
+    log?.appendLine(`[GitLab] Logged in as: ${userResult.value.username}`);
+  }
+
+  if (assignedResult.status === 'rejected') {
+    log?.appendLine(`[GitLab] assigned_to_me FAILED: ${assignedResult.reason}`);
+  } else {
+    log?.appendLine(`[GitLab] assigned_to_me returned ${assignedResult.value.length} MR(s)`);
+  }
+
+  const assignedRaw: GLMergeRequest[] = assignedResult.status === 'fulfilled' ? assignedResult.value : [];
+
+  // Only attempt reviewer-scoped fetch if we got the current username
+  let reviewerRaw: GLMergeRequest[] = [];
+  if (userResult.status === 'fulfilled' && userResult.value.username) {
+    const username = userResult.value.username;
+    log?.appendLine(`[GitLab] GET /api/v4/merge_requests?reviewer_username=${username}`);
+    try {
+      reviewerRaw = await httpRequest(
+        `${base}/api/v4/merge_requests?reviewer_username=${encodeURIComponent(username)}&state=opened&per_page=100`,
+        { headers }
+      ) as GLMergeRequest[];
+      log?.appendLine(`[GitLab] reviewer_username returned ${reviewerRaw.length} MR(s)`);
+    } catch (err) {
+      log?.appendLine(`[GitLab] reviewer_username FAILED: ${err}`);
+    }
+  }
+
+  // Deduplicate by MR id (an MR could appear in both lists)
+  const seen = new Set<number>();
+  const combined: MergeRequest[] = [];
+  for (const mr of [...assignedRaw, ...reviewerRaw]) {
+    if (!seen.has(mr.id)) {
+      seen.add(mr.id);
+      combined.push(mapMR(mr, mr.project_id, gitlabUrl));
+    }
+  }
+  log?.appendLine(`[GitLab] Total after dedup: ${combined.length} MR(s)`);
+  return combined;
 }
 
 export async function getGitlabMergeRequests(

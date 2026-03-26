@@ -6,7 +6,10 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   headers?: Record<string, string>;
   body?: string;
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function httpRequest(urlStr: string, options: RequestOptions = {}): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -22,6 +25,7 @@ export function httpRequest(urlStr: string, options: RequestOptions = {}): Promi
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'vscode-gitmerge/1.0',
         ...(options.headers ?? {}),
         ...(options.body
           ? { 'Content-Length': Buffer.byteLength(options.body) }
@@ -44,6 +48,10 @@ export function httpRequest(urlStr: string, options: RequestOptions = {}): Promi
           reject(new Error(`HTTP ${status}: ${data.slice(0, 300)}`));
         }
       });
+    });
+
+    req.setTimeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Request timed out after ${options.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms: ${urlStr}`));
     });
 
     req.on('error', reject);

@@ -53,21 +53,34 @@ interface GHFile {
 }
 
 /**
- * Fetch all open PRs assigned to the authenticated user across ALL repositories.
- * Branch info is omitted here; use getGithubPRDetails() to enrich.
+ * Fetch all open PRs relevant to the authenticated user across ALL repositories.
+ * Includes PRs that are assigned to the user, created by the user, or where
+ * the user's review was requested. Branch info is omitted here; use
+ * getGithubPRDetails() to enrich.
  */
 export async function getAssignedGithubPRs(token: string): Promise<MergeRequest[]> {
-  const url = `${BASE}/issues?filter=assigned&state=open&per_page=100`;
-  const raw = await httpRequest(url, { headers: basicHeaders(token) }) as GHIssue[];
+  const filters = ['assigned', 'created', 'review_requested'];
+  const headers = basicHeaders(token);
 
-  return raw
-    .filter((issue) => !!issue.pull_request)
-    .map((issue) => {
+  const results = await Promise.allSettled(
+    filters.map((filter) =>
+      httpRequest(`${BASE}/issues?filter=${filter}&state=open&per_page=100`, { headers }) as Promise<GHIssue[]>
+    )
+  );
+
+  const seen = new Set<number>();
+  const merged: MergeRequest[] = [];
+
+  for (const result of results) {
+    if (result.status !== 'fulfilled') { continue; }
+    for (const issue of result.value) {
+      if (!issue.pull_request || seen.has(issue.id)) { continue; }
+      seen.add(issue.id);
       // repository_url: "https://api.github.com/repos/owner/name"
       const repoParts = issue.repository_url.replace(/.*\/repos\//, '').split('/');
       const owner = repoParts[0] ?? '';
       const repo  = repoParts[1] ?? '';
-      return {
+      merged.push({
         id: issue.id,
         iid: issue.number,
         number: issue.number,
@@ -92,8 +105,11 @@ export async function getAssignedGithubPRs(token: string): Promise<MergeRequest[
         deletions: 0,
         changedFilesCount: 0,
         isDraft: issue.draft ?? false,
-      };
-    });
+      });
+    }
+  }
+
+  return merged;
 }
 
 /**

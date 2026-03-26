@@ -4,6 +4,7 @@ import { MergeRequest, ChangedFile } from '../models/types';
 import { getGithubPRFiles, getGithubPRDetails, mergeGithubPR, closeGithubPR } from '../services/githubService';
 import { getGitlabMRChanges, mergeGitlabMR, closeGitlabMR } from '../services/gitlabService';
 import { analyzeChanges } from '../services/aiService';
+import { outputChannel } from '../providers/mergeRequestProvider';
 
 export class MergeRequestPanel {
   public static currentPanel: MergeRequestPanel | undefined;
@@ -15,6 +16,7 @@ export class MergeRequestPanel {
   private _files: ChangedFile[] = [];
   private _disposables: vscode.Disposable[] = [];
   private _cancelSource?: vscode.CancellationTokenSource;
+  private _updateSeq = 0;
 
   public static createOrShow(context: vscode.ExtensionContext, mr: MergeRequest): void {
     const column = vscode.ViewColumn.One;
@@ -61,26 +63,39 @@ export class MergeRequestPanel {
   }
 
   private async _update(mr: MergeRequest): Promise<void> {
+    const seq = ++this._updateSeq;
     this._mr = mr;
     this._panel.title = `MR: ${mr.title.slice(0, 50)}`;
     this._panel.webview.html = this._getLoadingHtml();
 
+    outputChannel.appendLine(`[Panel] Opening MR #${mr.number} "${mr.title}" (${mr.provider})`);
+
+    let files: ChangedFile[];
     try {
-      this._files = await this._fetchFiles(mr);
-      // Enrich aggregate stats for GitLab (not provided by list endpoint)
-      if (mr.provider === 'gitlab') {
-        mr.additions = this._files.reduce((s, f) => s + f.additions, 0);
-        mr.deletions = this._files.reduce((s, f) => s + f.deletions, 0);
-        mr.changedFilesCount = this._files.length;
-      }
+      files = await this._fetchFiles(mr);
+      outputChannel.appendLine(`[Panel] Fetched ${files.length} file(s) for MR #${mr.number}`);
     } catch (err) {
+      outputChannel.appendLine(`[Panel] ERROR fetching files for MR #${mr.number}: ${String(err)}`);
+      if (seq !== this._updateSeq) { return; }
       this._panel.webview.html = this._getErrorHtml(String(err));
       return;
     }
 
+    if (seq !== this._updateSeq) {
+      outputChannel.appendLine(`[Panel] Stale update (seq ${seq}), discarding`);
+      return;
+    }
+
+    this._files = files;
+    // Enrich aggregate stats for GitLab (not provided by list endpoint)
+    if (mr.provider === 'gitlab') {
+      mr.additions = this._files.reduce((s, f) => s + f.additions, 0);
+      mr.deletions = this._files.reduce((s, f) => s + f.deletions, 0);
+      mr.changedFilesCount = this._files.length;
+    }
+
+    outputChannel.appendLine(`[Panel] Rendering webview for MR #${mr.number}`);
     this._panel.webview.html = this._getWebviewContent();
-    // Send data to webview once DOM is ready
-    this._panel.webview.postMessage({ type: 'init', mr: this._mr, files: this._files });
   }
 
   private async _fetchFiles(mr: MergeRequest): Promise<ChangedFile[]> {
@@ -89,11 +104,13 @@ export class MergeRequestPanel {
       const token = await this._context.secrets.get('gitmerge.githubToken');
       if (!token) { throw new Error('GitHub token not configured. Run "GitMerge: Set GitHub Token".'); }
 
+      outputChannel.appendLine(`[GitHub] Fetching PR details + files for ${mr.repoOwner}/${mr.repoName}#${mr.number}`);
       // Fetch full PR details and files in parallel; enrich mr with branch info
       const [details, files] = await Promise.all([
         getGithubPRDetails(mr.repoOwner, mr.repoName, mr.number, token),
         getGithubPRFiles(mr.repoOwner, mr.repoName, mr.number, token),
       ]);
+      outputChannel.appendLine(`[GitHub] Got ${files.length} file(s) for PR #${mr.number}`);
       Object.assign(mr, details);
       return files;
     } else {
@@ -101,12 +118,19 @@ export class MergeRequestPanel {
       if (!token) { throw new Error('GitLab token not configured. Run "GitMerge: Set GitLab Token".'); }
       const gitlabUrl: string = config.get('gitlabUrl') ?? 'https://gitlab.com';
       const projectId = (mr as MergeRequest & { gitlabProjectId?: string | number }).gitlabProjectId ?? `${mr.repoOwner}/${mr.repoName}`;
-      return getGitlabMRChanges(projectId, mr.iid, token, gitlabUrl);
+      outputChannel.appendLine(`[GitLab] Fetching changes for project ${projectId} MR !${mr.iid}`);
+      const files = await getGitlabMRChanges(projectId, mr.iid, token, gitlabUrl);
+      outputChannel.appendLine(`[GitLab] Got ${files.length} file(s) for MR !${mr.iid}`);
+      return files;
     }
   }
 
   private async _handleMessage(message: { type: string; [key: string]: unknown }): Promise<void> {
     switch (message.type) {
+      case 'ready':
+        outputChannel.appendLine(`[Panel] Webview ready — sending init data for MR #${this._mr.number} (${this._files.length} files)`);
+        this._panel.webview.postMessage({ type: 'init', mr: this._mr, files: this._files });
+        break;
       case 'analyze':
         await this._runAIAnalysis();
         break;
@@ -465,10 +489,19 @@ export class MergeRequestPanel {
   });
 
   // ─── Message handler ─────────────────────────────────────────────────────
+  // IMPORTANT: listener must be registered BEFORE sending 'ready',
+  // so the 'init' response from the extension cannot arrive before the handler is set up.
   window.addEventListener('message', function(event) {
     const msg = event.data;
     switch (msg.type) {
-      case 'init':       onInit(msg.mr, msg.files);           break;
+      case 'init':
+        try {
+          console.log('[GitMerge] init received — mr#' + msg.mr.number + ' files:' + (msg.files || []).length);
+          onInit(msg.mr, msg.files);
+        } catch (e) {
+          showInitError(String(e));
+        }
+        break;
       case 'analysisStart': onAnalysisStart();                break;
       case 'analysisChunk': onAnalysisChunk(msg.chunk);       break;
       case 'analysisDone':  onAnalysisDone();                 break;
@@ -478,7 +511,19 @@ export class MergeRequestPanel {
     }
   });
 
-  // ─── Init ────────────────────────────────────────────────────────────────
+  // Notify extension that the webview script is ready to receive data.
+  // Listener is already registered above — 'init' cannot arrive before the handler.
+  vscode.postMessage({ type: 'ready' });
+
+  function showInitError(msg) {
+    document.body.innerHTML =
+      '<div style="padding:24px;font-family:var(--vscode-font-family);color:var(--vscode-foreground)">' +
+      '<h2 style="color:#f85149">Webview init error</h2>' +
+      '<pre style="white-space:pre-wrap;color:#f85149;font-size:12px">' + msg + '</pre>' +
+      '<p style="margin-top:12px;font-size:12px;color:var(--vscode-descriptionForeground)">Check Output panel → GitMerge for extension-side logs.</p>' +
+      '</div>';
+  }
+
   function onInit(mr, files) {
     currentFiles = files || [];
     renderHeader(mr);

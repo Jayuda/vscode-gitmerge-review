@@ -3,6 +3,8 @@ import { MergeRequest, Provider } from '../models/types';
 import { getAssignedGithubPRs } from '../services/githubService';
 import { getAssignedGitlabMRs } from '../services/gitlabService';
 
+export const outputChannel = vscode.window.createOutputChannel('GitMerge');
+
 // ─── TreeItem types ───────────────────────────────────────────────────────────
 
 export class ProviderNode extends vscode.TreeItem {
@@ -33,7 +35,7 @@ export class ProviderNode extends vscode.TreeItem {
         title: `Set ${label} Token`,
       };
     } else {
-      this.description = mrCount === 0 ? 'No assigned MRs' : `${mrCount} assigned`;
+      this.description = mrCount === 0 ? 'No open MRs' : `${mrCount} open`;
     }
   }
 }
@@ -151,8 +153,11 @@ export class MergeRequestProvider implements vscode.TreeDataProvider<TreeNode> {
       const token = await this.context.secrets.get('gitmerge.gitlabToken') as string;
       const config = vscode.workspace.getConfiguration('gitmerge');
       const gitlabUrl: string = config.get('gitlabUrl') ?? 'https://gitlab.com';
-      this.gitlabMRs = await getAssignedGitlabMRs(token, gitlabUrl);
+      outputChannel.appendLine(`[GitLab] Loading MRs from ${gitlabUrl}`);
+      this.gitlabMRs = await getAssignedGitlabMRs(token, gitlabUrl, outputChannel);
+      outputChannel.appendLine(`[GitLab] Loaded ${this.gitlabMRs.length} MR(s)`);
     } catch (err) {
+      outputChannel.appendLine(`[GitLab] ERROR: ${String(err)}`);
       vscode.window.showErrorMessage(`GitMerge GitLab: ${String(err)}`);
       this.gitlabMRs = [];
     } finally {
@@ -190,7 +195,7 @@ export class MergeRequestProvider implements vscode.TreeDataProvider<TreeNode> {
       }
       const mrs = element.provider === 'github' ? this.githubMRs : this.gitlabMRs;
       if (mrs.length === 0) {
-        return [new StatusNode('No assigned merge requests', 'check')];
+        return [new StatusNode('No open merge requests', 'check')];
       }
       // Group by repo
       const repoMap = new Map<string, MergeRequest[]>();
