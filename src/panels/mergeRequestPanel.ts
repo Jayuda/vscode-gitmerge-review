@@ -257,7 +257,7 @@ export class MergeRequestPanel {
     const nonce = getNonce();
     const webview = this._panel.webview;
 
-    return /* html */ `<!DOCTYPE html>
+    return String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -284,9 +284,12 @@ export class MergeRequestPanel {
     .stat-add{color:#3fb950}
     .stat-del{color:#f85149}
     /* ── Body layout ── */
-    #body{flex:1;display:flex;overflow:hidden;min-height:0}
+    #body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+    #diff-wrapper{flex:1;display:flex;overflow:hidden;min-height:0}
     /* ── File sidebar ── */
-    #file-sidebar{width:240px;flex-shrink:0;background:var(--vscode-sideBar-background);border-right:1px solid var(--vscode-panel-border);display:flex;flex-direction:column;overflow:hidden}
+    #file-sidebar{width:240px;flex-shrink:0;background:var(--vscode-sideBar-background);display:flex;flex-direction:column;overflow:hidden}
+    #sidebar-resize{width:5px;flex-shrink:0;cursor:ew-resize;background:transparent;border-right:1px solid var(--vscode-panel-border);transition:background .15s}
+    #sidebar-resize:hover,#sidebar-resize.dragging{background:var(--vscode-focusBorder)}
     #sidebar-header{padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);border-bottom:1px solid var(--vscode-panel-border);letter-spacing:.05em}
     #file-list{flex:1;overflow-y:auto}
     .file-item{padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;border-left:2px solid transparent;user-select:none}
@@ -303,25 +306,51 @@ export class MergeRequestPanel {
     #diff-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
     #diff-file-header{padding:8px 14px;background:var(--vscode-editorGroupHeader-tabsBackground,var(--vscode-sideBar-background));border-bottom:1px solid var(--vscode-panel-border);font-size:12px;font-family:var(--vscode-editor-font-family,monospace);display:flex;align-items:center;gap:8px;flex-shrink:0;min-height:35px}
     #diff-file-header span{color:var(--vscode-descriptionForeground)}
-    #diff-scroll{flex:1;overflow:auto}
+    /* ── Split panes ── */
+    #diff-panes{flex:1;display:flex;overflow:hidden;min-height:0}
+    .diff-pane{flex:0 0 50%;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+    #before-pane{border-right:none}
+    .diff-pane-header{padding:5px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;flex-shrink:0;border-bottom:1px solid var(--vscode-panel-border)}
+    #before-pane .diff-pane-header{color:#f85149;background:rgba(218,54,51,.12)}
+    #after-pane  .diff-pane-header{color:#3fb950;background:rgba(40,167,69,.12)}
+    .diff-pane-scroll{flex:1;overflow:auto}
+    /* ── Split resize handle ── */
+    #diff-vsplit{width:5px;flex-shrink:0;cursor:ew-resize;background:transparent;border-left:1px solid var(--vscode-panel-border);border-right:1px solid var(--vscode-panel-border);transition:background .15s}
+    #diff-vsplit:hover,#diff-vsplit.dragging{background:var(--vscode-focusBorder)}
     /* ── Diff table ── */
     .diff-table{width:100%;border-collapse:collapse;font-family:var(--vscode-editor-font-family,'Menlo','Consolas',monospace);font-size:var(--vscode-editor-font-size,12px);table-layout:fixed}
-    .diff-table col.ln{width:48px}
-    .diff-table col.code{width:calc(50% - 48px)}
-    .diff-divider{width:1px;background:var(--vscode-panel-border);padding:0!important}
+    .diff-table col.ln{width:44px}
+    .diff-table col.code{width:calc(100% - 44px)}
     .diff-table td{padding:0 6px;white-space:pre;line-height:20px;height:20px;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
-    .ln{text-align:right;padding-right:10px!important;color:var(--vscode-editorLineNumber-foreground);user-select:none;font-size:11px;border-right:1px solid var(--vscode-editorLineNumber-activeForeground,#444)}
+    .ln{text-align:right;padding-right:8px!important;color:var(--vscode-editorLineNumber-foreground);user-select:none;font-size:11px;border-right:1px solid rgba(128,128,128,.25)}
     .code{padding-left:10px!important}
-    .row-add{background:rgba(40,167,69,.13)}
-    .row-add .code{background:rgba(40,167,69,.13)}
-    .row-del{background:rgba(218,54,51,.13)}
-    .row-del .code{background:rgba(218,54,51,.13)}
-    .row-empty{background:rgba(100,100,100,.05)}
-    .row-hunk td{background:var(--vscode-diffEditor-diagonalFill,rgba(128,128,128,.1))!important;color:var(--vscode-descriptionForeground);font-style:italic;padding:3px 10px!important;height:auto!important}
-    .diff-table .ln-add{color:var(--vscode-diffEditorInserted-foreground,#3fb950)}
-    .diff-table .ln-del{color:var(--vscode-diffEditorRemoved-foreground,#f85149)}
+    /* Row colors */
+    .row-del td{background:rgba(218,54,51,.08)}
+    .row-del .code{background:rgba(218,54,51,.22)!important}
+    .row-del .ln{color:#f85149}
+    .row-add td{background:rgba(40,167,69,.08)}
+    .row-add .code{background:rgba(40,167,69,.22)!important}
+    .row-empty td{background:rgba(100,100,100,.05)}
+    .row-hunk td{background:rgba(128,128,128,.08)!important;color:var(--vscode-descriptionForeground);font-style:italic;padding:3px 10px!important;height:auto!important;border:none;letter-spacing:.03em}
+    .diff-table .ln-add{color:#3fb950}
+    .diff-table .ln-del{color:#f85149}
+    /* ── Syntax highlight tokens (VSCode dark/light adaptive) ── */
+    .tok-kw   {color:var(--vscode-symbolIcon-keywordForeground,#569cd6)}
+    .tok-str  {color:var(--vscode-symbolIcon-stringForeground,#ce9178)}
+    .tok-cmt  {color:var(--vscode-symbolIcon-colorForeground,#6a9955);font-style:italic}
+    .tok-num  {color:var(--vscode-symbolIcon-numberForeground,#b5cea8)}
+    .tok-fn   {color:var(--vscode-symbolIcon-functionForeground,#dcdcaa)}
+    .tok-cls  {color:var(--vscode-symbolIcon-classForeground,#4ec9b0)}
+    .tok-op   {color:var(--vscode-symbolIcon-operatorForeground,#d4d4d4)}
+    .tok-tag  {color:var(--vscode-symbolIcon-keywordForeground,#569cd6)}
+    .tok-attr {color:var(--vscode-symbolIcon-fieldForeground,#9cdcfe)}
+    .tok-val  {color:var(--vscode-symbolIcon-stringForeground,#ce9178)}
+    .tok-sel  {color:var(--vscode-symbolIcon-classForeground,#d7ba7d)}
+    .tok-pp   {color:var(--vscode-symbolIcon-colorForeground,#c586c0)}
+    .tok-dec  {color:var(--vscode-symbolIcon-colorForeground,#c586c0)}
+    .tok-re   {color:var(--vscode-symbolIcon-stringForeground,#d16969)}
     /* ── AI panel ── */
-    #ai-panel{width:310px;flex-shrink:0;background:var(--vscode-sideBar-background);border-left:1px solid var(--vscode-panel-border);display:flex;flex-direction:column;overflow:hidden}
+    #ai-panel{height:260px;flex-shrink:0;background:var(--vscode-sideBar-background);border-top:1px solid var(--vscode-panel-border);display:flex;flex-direction:column;overflow:hidden}
     #ai-panel-header{padding:10px 14px;font-weight:700;border-bottom:1px solid var(--vscode-panel-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
     #ai-panel-title{display:flex;align-items:center;gap:6px;font-size:13px}
     #btn-analyze{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:5px 12px;border-radius:var(--radius);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -345,6 +374,9 @@ export class MergeRequestPanel {
     .rec-approve{background:rgba(40,167,69,.12);border:1px solid #238636;color:#3fb950}
     .rec-suggest{background:rgba(255,193,7,.12);border:1px solid #e3b341;color:#e3b341}
     .rec-changes{background:rgba(218,54,51,.12);border:1px solid #da3633;color:#f85149}
+    /* ── AI resize handle ── */
+    #ai-resize{height:5px;flex-shrink:0;cursor:ns-resize;background:transparent;border-top:1px solid var(--vscode-panel-border);transition:background .15s}
+    #ai-resize:hover,#ai-resize.dragging{background:var(--vscode-focusBorder)}
     /* ── Spinner ── */
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -385,11 +417,14 @@ export class MergeRequestPanel {
   </div>
 
   <div id="body">
+    <div id="diff-wrapper">
     <!-- File sidebar -->
     <div id="file-sidebar">
       <div id="sidebar-header">Files Changed (<span id="file-count">0</span>)</div>
       <div id="file-list"></div>
     </div>
+    <!-- Sidebar resize handle -->
+    <div id="sidebar-resize"></div>
 
     <!-- Diff viewer -->
     <div id="diff-area">
@@ -397,17 +432,36 @@ export class MergeRequestPanel {
         <span id="diff-file-name" style="font-weight:600">Select a file</span>
         <span id="diff-file-stats"></span>
       </div>
-      <div id="diff-scroll">
-        <div class="empty-diff" id="diff-empty">Select a file from the sidebar to view changes</div>
-        <table class="diff-table" id="diff-table" style="display:none">
-          <colgroup>
-            <col class="ln"><col class="code">
-            <col class="ln"><col class="code">
-          </colgroup>
-          <tbody id="diff-body"></tbody>
-        </table>
+      <div id="diff-panes">
+        <!-- Before pane -->
+        <div class="diff-pane" id="before-pane">
+          <div class="diff-pane-header">&#x2190; Before</div>
+          <div class="diff-pane-scroll" id="before-scroll">
+            <div class="empty-diff" id="diff-empty">Select a file from the sidebar to view changes</div>
+            <table class="diff-table" id="before-table" style="display:none">
+              <colgroup><col class="ln"><col class="code"></colgroup>
+              <tbody id="before-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Split resize handle -->
+        <div id="diff-vsplit"></div>
+        <!-- After pane -->
+        <div class="diff-pane" id="after-pane">
+          <div class="diff-pane-header">After &#x2192;</div>
+          <div class="diff-pane-scroll" id="after-scroll">
+            <table class="diff-table" id="after-table" style="display:none">
+              <colgroup><col class="ln"><col class="code"></colgroup>
+              <tbody id="after-body"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
+    </div>
+
+    <!-- AI resize handle -->
+    <div id="ai-resize"></div>
 
     <!-- AI Analysis panel -->
     <div id="ai-panel">
@@ -496,6 +550,121 @@ export class MergeRequestPanel {
   const btnReject  = document.getElementById('btn-reject');
   const btnOpen    = document.getElementById('btn-open');
   const actStatus  = document.getElementById('action-status');
+
+  // ─── Sidebar resize ───────────────────────────────────────────────────────
+  (function() {
+    const handle  = document.getElementById('sidebar-resize');
+    const sidebar = document.getElementById('file-sidebar');
+    const minW = 120, maxW = 500;
+    let dragging = false, startX = 0, startW = 0;
+    handle?.addEventListener('mousedown', function(e) {
+      dragging = true; startX = e.clientX;
+      startW = sidebar.getBoundingClientRect().width;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ew-resize';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) { return; }
+      const newW = Math.min(maxW, Math.max(minW, startW + (e.clientX - startX)));
+      sidebar.style.width = newW + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+      if (!dragging) { return; }
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    });
+  })();
+
+  // ─── Before/After split resize ────────────────────────────────────────────
+  (function() {
+    const handle      = document.getElementById('diff-vsplit');
+    const beforePane  = document.getElementById('before-pane');
+    const afterPane   = document.getElementById('after-pane');
+    const beforeScroll = document.getElementById('before-scroll');
+    const afterScroll  = document.getElementById('after-scroll');
+    let splitPct = 50;
+    let dragging = false, startX = 0, startPct = 0;
+    let syncingScroll = false;
+
+    // Sync vertical scroll between panes
+    beforeScroll?.addEventListener('scroll', function() {
+      if (syncingScroll) { return; }
+      syncingScroll = true;
+      afterScroll.scrollTop = beforeScroll.scrollTop;
+      syncingScroll = false;
+    });
+    afterScroll?.addEventListener('scroll', function() {
+      if (syncingScroll) { return; }
+      syncingScroll = true;
+      beforeScroll.scrollTop = afterScroll.scrollTop;
+      syncingScroll = false;
+    });
+
+    function applySplit(pct) {
+      splitPct = Math.min(80, Math.max(20, pct));
+      // flex-basis on each pane — this is instant and reliable
+      beforePane.style.flex = '0 0 ' + splitPct + '%';
+      afterPane.style.flex  = '0 0 ' + (100 - splitPct) + '%';
+    }
+    applySplit(50);
+
+    handle?.addEventListener('mousedown', function(e) {
+      dragging = true; startX = e.clientX; startPct = splitPct;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ew-resize';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) { return; }
+      const panesW = (beforePane.parentElement || document.body).getBoundingClientRect().width;
+      if (panesW === 0) { return; }
+      applySplit(startPct + (e.clientX - startX) / panesW * 100);
+    });
+    document.addEventListener('mouseup', function() {
+      if (!dragging) { return; }
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    });
+  })();
+
+  // ─── AI panel resize ─────────────────────────────────────────────────────
+  (function() {
+    const handle   = document.getElementById('ai-resize');
+    const aiPanel  = document.getElementById('ai-panel');
+    const minH = 80;
+    const maxH = 600;
+    let dragging = false;
+    let startY = 0;
+    let startH = 0;
+    handle?.addEventListener('mousedown', function(e) {
+      dragging = true;
+      startY = e.clientY;
+      startH = aiPanel.getBoundingClientRect().height;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) { return; }
+      const delta = startY - e.clientY; // drag up = bigger
+      const newH = Math.min(maxH, Math.max(minH, startH + delta));
+      aiPanel.style.height = newH + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+      if (!dragging) { return; }
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    });
+  })();
 
   // ─── Button events ────────────────────────────────────────────────────────
   btnAnalyze?.addEventListener('click', () => {
@@ -612,11 +781,254 @@ export class MergeRequestPanel {
     if (items[idx]) { items[idx].scrollIntoView({ block: 'nearest' }); }
   }
 
+  // ─── Syntax highlighting ─────────────────────────────────────────────────
+  // Lightweight tokeniser — covers JS/TS/JSX/TSX, Python, CSS/SCSS/LESS,
+  // HTML/XML, JSON, Go, Rust, Java, C/C++/C#, PHP, Ruby, Shell, YAML,
+  // Kotlin, Swift, Dart, SQL.  Falls back to plain-escaped text for unknown.
+
+  var _hlCache = {};
+
+  function langFromFilename(fname) {
+    var ext = (fname || '').replace(/.*\./, '').toLowerCase();
+    var map = {
+      'js':'js','jsx':'js','mjs':'js','cjs':'js',
+      'ts':'ts','tsx':'ts','mts':'ts',
+      'vue':'html','svelte':'html','html':'html','htm':'html','xml':'html','svg':'html','jsx':'jsx',
+      'css':'css','scss':'css','sass':'css','less':'css',
+      'json':'json','jsonc':'json','json5':'json',
+      'py':'py','pyw':'py',
+      'rb':'rb','erb':'rb',
+      'go':'go',
+      'rs':'rs',
+      'java':'java',
+      'kt':'kt','kts':'kt',
+      'swift':'swift',
+      'dart':'dart',
+      'c':'c','cc':'c','cpp':'c','cxx':'c','h':'c','hpp':'c',
+      'cs':'cs',
+      'php':'php',
+      'sh':'sh','bash':'sh','zsh':'sh',
+      'yaml':'yaml','yml':'yaml',
+      'sql':'sql',
+      'md':'md','markdown':'md',
+      'graphql':'graphql','gql':'graphql',
+      'tf':'hcl','hcl':'hcl'
+    };
+    return map[ext] || 'plain';
+  }
+
+  // Tokenise a single line into safe HTML with span wrappers.
+  // Uses a simple greedy scanner: tries each pattern in order, emits spans.
+  function highlight(rawLine, lang) {
+    if (!rawLine) { return ''; }
+    if (lang === 'plain' || !lang) { return esc(rawLine); }
+
+    // Cache key
+    var ck = lang + '\x00' + rawLine;
+    if (_hlCache[ck]) { return _hlCache[ck]; }
+
+    var rules = getRules(lang);
+    var out = tokenise(rawLine, rules);
+    _hlCache[ck] = out;
+    return out;
+  }
+
+  // Build token rules for each language family
+  function getRules(lang) {
+    // shared building blocks
+    var STR_DQ  = { re: /"(?:[^"\\]|\\.)*"/, cls: 'tok-str' };
+    var STR_SQ  = { re: /'(?:[^'\\]|\\.)*'/, cls: 'tok-str' };
+    var STR_BT  = { re: /\x60(?:[^\x60\\]|\\.)*\x60/, cls: 'tok-str' };
+    var NUM     = { re: /\b0x[\da-fA-F]+\b|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/, cls: 'tok-num' };
+    var CMT_SL  = { re: /\/\/.*/, cls: 'tok-cmt' };
+    var CMT_ML  = { re: /\/\*[\s\S]*?\*\//, cls: 'tok-cmt' };
+    var CMT_HASH= { re: /#.*/, cls: 'tok-cmt' };
+
+    if (lang === 'js' || lang === 'ts') {
+      var KW = /\b(?:abstract|as|async|await|break|case|catch|class|const|constructor|continue|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|is|keyof|let|module|namespace|new|null|of|override|package|private|protected|public|readonly|return|set|static|super|switch|this|throw|true|try|type|typeof|undefined|var|void|while|with|yield)\b/;
+      var FN  = { re: /\b([A-Za-z_$][\w$]*)\s*(?=\()/, cls: 'tok-fn', group: 1 };
+      var CLS = { re: /\b([A-Z][A-Za-z0-9_$]*)/, cls: 'tok-cls', group: 1 };
+      var DEC = { re: /@\w[\w.]*/, cls: 'tok-dec' };
+      var RE_LIT = { re: /\/(?!\/)(?:[^/\\\n]|\\.)+\/[gimsuy]*/, cls: 'tok-re' };
+      return [CMT_SL, CMT_ML, STR_BT, STR_DQ, STR_SQ, RE_LIT, DEC,
+              {re: KW, cls:'tok-kw'}, NUM, FN, CLS];
+    }
+    if (lang === 'py') {
+      var KW_PY = /\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b/;
+      var STR_TR3D = { re: /"""[\s\S]*?"""/, cls: 'tok-str' };
+      var STR_TR3S = { re: /'''[\s\S]*?'''/, cls: 'tok-str' };
+      var DEC_PY   = { re: /@\w[\w.]*/, cls: 'tok-dec' };
+      var FN_PY    = { re: /\bdef\s+([A-Za-z_]\w*)/, cls: 'tok-fn', group: 1, after: 'tok-kw' };
+      var CLS_PY   = { re: /\bclass\s+([A-Za-z_]\w*)/, cls: 'tok-cls', group: 1, after: 'tok-kw' };
+      return [CMT_HASH, STR_TR3D, STR_TR3S, STR_DQ, STR_SQ, DEC_PY,
+              {re: KW_PY, cls:'tok-kw'}, NUM, FN_PY, CLS_PY];
+    }
+    if (lang === 'css') {
+      var CMT_CSS = CMT_ML;
+      var AT_RULE = { re: /@[\w-]+/, cls: 'tok-pp' };
+      var CSS_SEL = { re: /[.#]?[A-Za-z_][\w-]*(?:\s*[,{>+~])/, cls: 'tok-sel' };
+      var CSS_PROP= { re: /[\w-]+\s*(?=:)/, cls: 'tok-attr' };
+      var CSS_VAL = { re: /:\s*[^;{}"'\n]+/, cls: 'tok-val' };
+      var CSS_STR = { re: /"[^"]*"|'[^']*'/, cls: 'tok-str' };
+      return [CMT_CSS, CSS_STR, AT_RULE, CSS_SEL, CSS_PROP, CSS_VAL, NUM];
+    }
+    if (lang === 'html') {
+      var CMT_HTML = { re: /<!--[\s\S]*?-->/, cls: 'tok-cmt' };
+      var TAG_OPEN = { re: /<\/?[A-Za-z][A-Za-z0-9:-]*/, cls: 'tok-tag' };
+      var TAG_END  = { re: /\/?>/, cls: 'tok-tag' };
+      var ATTR_NM  = { re: /\b[A-Za-z_:][A-Za-z0-9_:.-]*(?=\s*=)/, cls: 'tok-attr' };
+      var ATTR_VAL = { re: /"[^"]*"|'[^']*'/, cls: 'tok-val' };
+      var ENTITY   = { re: /&[A-Za-z0-9#]+;/, cls: 'tok-str' };
+      return [CMT_HTML, TAG_OPEN, TAG_END, ATTR_NM, ATTR_VAL, ENTITY];
+    }
+    if (lang === 'json') {
+      var KEY = { re: /"(?:[^"\\]|\\.)*"\s*:/, cls: 'tok-attr' };
+      var JBOOL = { re: /\b(?:true|false|null)\b/, cls: 'tok-kw' };
+      return [KEY, STR_DQ, JBOOL, NUM];
+    }
+    if (lang === 'go') {
+      var KW_GO = /\b(?:break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b/;
+      var FN_GO = { re: /\bfunc\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)/, cls: 'tok-fn', group: 1 };
+      var TY_GO = { re: /\b(?:bool|byte|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr)\b/, cls: 'tok-cls' };
+      var STR_RAW = { re: /\x60[^\x60]*\x60/, cls: 'tok-str' };
+      return [CMT_SL, CMT_ML, STR_RAW, STR_DQ, STR_SQ, {re: KW_GO, cls:'tok-kw'}, TY_GO, NUM, FN_GO];
+    }
+    if (lang === 'rs') {
+      var KW_RS = /\b(?:as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|union|unsafe|use|where|while|yield)\b/;
+      var MAC_RS = { re: /\b\w+!(?=\s*[\[({"'])/, cls: 'tok-fn' };
+      var LT_RS  = { re: /'[A-Za-z_]\w*/, cls: 'tok-dec' };
+      var STR_RS = { re: /r#*"[\s\S]*?"#*/, cls: 'tok-str' };
+      var ATT_RS = { re: /#!?\[.*?\]/, cls: 'tok-dec' };
+      return [CMT_SL, CMT_ML, ATT_RS, STR_RS, STR_DQ, STR_SQ, LT_RS,
+              {re: KW_RS, cls:'tok-kw'}, NUM, MAC_RS,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    if (lang === 'java' || lang === 'kotlin' || lang === 'kt') {
+      var KW_J = /\b(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|true|try|void|volatile|while|fun|val|var|when|is|in|object|data|sealed|companion|inline|override|open|suspend|reified|crossinline|noinline|out|internal)\b/;
+      var ANN_J = { re: /@[A-Za-z_]\w*/, cls: 'tok-dec' };
+      return [CMT_SL, CMT_ML, STR_DQ, STR_SQ, ANN_J, {re: KW_J, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    if (lang === 'c' || lang === 'cs') {
+      var KW_C = /\b(?:alignas|alignof|and|and_eq|asm|atomic_cancel|atomic_commit|atomic_noexcept|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|goto|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|reflexpr|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|synchronized|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq|abstract|as|base|byte|checked|decimal|delegate|event|fixed|foreach|implicit|interface|internal|is|lock|object|out|override|params|readonly|ref|sbyte|sealed|stackalloc|string|typeof|uint|ulong|unchecked|unsafe|ushort|var|nameof|async|await|partial|yield)\b/;
+      var PP_C = { re: /^\s*#\s*(?:include|define|undef|ifdef|ifndef|if|elif|else|endif|pragma|error|warning|line)\b.*/, cls: 'tok-pp' };
+      return [CMT_SL, CMT_ML, PP_C, STR_DQ, STR_SQ, {re: KW_C, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    if (lang === 'php') {
+      var KW_PHP = /\b(?:abstract|and|array|as|break|callable|case|catch|class|clone|const|continue|declare|default|die|do|echo|else|elseif|empty|enddeclare|endfor|endforeach|endif|endswitch|endwhile|eval|exit|extends|final|finally|fn|for|foreach|function|global|goto|if|implements|include|include_once|instanceof|insteadof|interface|isset|list|match|namespace|new|or|print|private|protected|public|readonly|require|require_once|return|static|switch|throw|trait|try|unset|use|var|while|xor|yield|null|true|false)\b/i;
+      var PHP_VAR = { re: /\$[A-Za-z_]\w*/, cls: 'tok-attr' };
+      return [CMT_SL, CMT_ML, {re:/\/\/.*|#.*/, cls:'tok-cmt'}, STR_DQ, STR_SQ,
+              {re: KW_PHP, cls:'tok-kw'}, PHP_VAR, NUM];
+    }
+    if (lang === 'rb') {
+      var KW_RB = /\b(?:__ENCODING__|__LINE__|__FILE__|BEGIN|END|alias|and|begin|break|case|class|def|defined\?|do|else|elsif|end|ensure|false|for|if|in|module|next|nil|not|or|redo|rescue|retry|return|self|super|then|true|undef|unless|until|when|while|yield)\b/;
+      var SYM_RB = { re: /:\w+/, cls: 'tok-dec' };
+      var STR_H  = { re: /<<[-~]?['"]?(\w+)['"]?.*/, cls: 'tok-str' };
+      return [CMT_HASH, STR_DQ, STR_SQ, STR_BT, SYM_RB, {re: KW_RB, cls:'tok-kw'}, NUM,
+              { re: /\bdef\s+([A-Za-z_]\w*[!?]?)/, cls: 'tok-fn', group: 1 }];
+    }
+    if (lang === 'sh') {
+      var KW_SH = /\b(?:if|then|else|elif|fi|case|esac|while|until|for|do|done|in|function|return|exit|local|export|readonly|declare|typeset|unset|shift|exec|eval|trap|break|continue|select|time|coproc)\b/;
+      var VAR_SH = { re: /\$\{?[\w#?@*!-]+\}?/, cls: 'tok-attr' };
+      return [CMT_HASH, STR_DQ, STR_SQ, STR_BT, {re: KW_SH, cls:'tok-kw'}, VAR_SH, NUM];
+    }
+    if (lang === 'yaml') {
+      var KEY_Y  = { re: /^(\s*[\w.-]+)\s*(?=:)/, cls: 'tok-attr', group: 1 };
+      var ANC_Y  = { re: /[&*][A-Za-z_][\w-]*/, cls: 'tok-dec' };
+      var BOOL_Y = { re: /\b(?:true|false|yes|no|null|~)\b/, cls: 'tok-kw' };
+      return [{re: /^\s*#.*/, cls:'tok-cmt'}, STR_DQ, STR_SQ, ANC_Y, KEY_Y, BOOL_Y, NUM];
+    }
+    if (lang === 'sql') {
+      var KW_SQL = /\b(?:ADD|ALL|ALTER|AND|AS|ASC|BETWEEN|BY|CASE|CHECK|COLUMN|CONSTRAINT|CREATE|CROSS|DATABASE|DEFAULT|DELETE|DESC|DISTINCT|DROP|ELSE|END|EXISTS|FOREIGN|FROM|FULL|GROUP|HAVING|IN|INDEX|INNER|INSERT|INTO|IS|JOIN|KEY|LEFT|LIKE|LIMIT|NOT|NULL|ON|OR|ORDER|OUTER|PRIMARY|REFERENCES|RIGHT|SELECT|SET|TABLE|THEN|TOP|TRUNCATE|UNION|UNIQUE|UPDATE|VALUES|VIEW|WHERE|WITH)\b/i;
+      return [CMT_SL, CMT_ML, STR_DQ, STR_SQ, {re: KW_SQL, cls:'tok-kw'}, NUM];
+    }
+    if (lang === 'hcl') {
+      var KW_HCL = /\b(?:resource|data|variable|output|locals|module|provider|terraform|for_each|count|lifecycle|depends_on|provisioner|connection|for|in|if|else|true|false|null)\b/;
+      return [CMT_HASH, CMT_SL, CMT_ML, STR_DQ, {re: KW_HCL, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Za-z_]\w*)\s*(?=\s*{)/, cls: 'tok-fn', group: 1 }];
+    }
+    if (lang === 'graphql') {
+      var KW_GQL = /\b(?:query|mutation|subscription|fragment|on|directive|schema|scalar|type|interface|union|enum|input|extend|implements|true|false|null)\b/;
+      return [CMT_HASH, STR_DQ, {re: KW_GQL, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    if (lang === 'swift') {
+      var KW_SW = /\b(?:actor|associatedtype|async|await|break|case|catch|class|continue|default|defer|deinit|do|else|enum|extension|fallthrough|false|fileprivate|final|for|func|get|guard|if|import|in|init|inout|internal|is|lazy|let|mutating|nil|nonmutating|open|operator|override|precedencegroup|private|protocol|public|repeat|required|rethrows|return|set|some|static|struct|subscript|super|switch|throw|throws|true|try|type|typealias|unowned|var|weak|where|while)\b/;
+      var ATT_SW = { re: /@\w+/, cls: 'tok-dec' };
+      return [CMT_SL, CMT_ML, STR_DQ, STR_SQ, ATT_SW, {re: KW_SW, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    if (lang === 'dart') {
+      var KW_DT = /\b(?:abstract|as|assert|async|await|break|case|catch|class|const|continue|covariant|default|deferred|do|dynamic|else|enum|export|extends|extension|external|factory|false|final|finally|for|Function|get|hide|if|implements|import|in|interface|is|late|library|mixin|new|null|on|operator|part|required|rethrow|return|set|show|static|super|switch|sync|this|throw|true|try|typedef|var|void|while|with|yield)\b/;
+      return [CMT_SL, CMT_ML, STR_DQ, STR_SQ, STR_BT, {re: KW_DT, cls:'tok-kw'}, NUM,
+              { re: /\b([A-Z][A-Za-z0-9_]*)/, cls: 'tok-cls', group: 1 }];
+    }
+    // markdown: just bold, inline code, headers
+    if (lang === 'md') {
+      return [
+        { re: /^#{1,6}\s.*/, cls: 'tok-kw' },
+        { re: /\*\*[^*]+\*\*|__[^_]+__/, cls: 'tok-fn' },
+        { re: /\x60[^\x60]+\x60/, cls: 'tok-str' }
+      ];
+    }
+    return [];
+  }
+
+  // Greedy scanner: scan rawLine left to right, apply first matching rule at each pos
+  function tokenise(rawLine, rules) {
+    if (!rules || !rules.length) { return esc(rawLine); }
+    var out = '';
+    var pos = 0;
+    var safety = 0;
+    while (pos < rawLine.length) {
+      if (++safety > 5000) { out += esc(rawLine.slice(pos)); break; }
+      var best = null, bestIdx = rawLine.length, bestRule = null;
+      for (var r = 0; r < rules.length; r++) {
+        var rule = rules[r];
+        var re = new RegExp(rule.re.source, rule.re.flags ? rule.re.flags.replace('g','') : '');
+        re.lastIndex = 0;
+        var src = rawLine.slice(pos);
+        var m = re.exec(src);
+        if (m && (pos + m.index) < bestIdx) {
+          bestIdx   = pos + m.index;
+          best = m;
+          bestRule  = rule;
+        }
+      }
+      if (!bestRule || bestIdx >= rawLine.length) {
+        out += esc(rawLine.slice(pos));
+        break;
+      }
+      // Emit plain text before match
+      if (bestIdx > pos) { out += esc(rawLine.slice(pos, bestIdx)); }
+      // Emit token
+      var matchText = best[0];
+      var tokenText = (bestRule.group != null) ? best[bestRule.group] : matchText;
+      var beforeToken = (bestRule.group != null) ? matchText.slice(0, best.index + (best.indices ? 0 : matchText.indexOf(tokenText))) : '';
+      if (bestRule.group != null) {
+        // Highlight only the captured group, plain-output the rest of the match
+        var fullMatch = matchText;
+        var captured  = tokenText;
+        var capStart  = fullMatch.indexOf(captured);
+        out += esc(fullMatch.slice(0, capStart));
+        out += '<span class="' + bestRule.cls + '">' + esc(captured) + '</span>';
+        out += esc(fullMatch.slice(capStart + captured.length));
+      } else {
+        out += '<span class="' + bestRule.cls + '">' + esc(tokenText) + '</span>';
+      }
+      pos = bestIdx + matchText.length;
+    }
+    return out;
+  }
+
   // ─── Diff rendering ───────────────────────────────────────────────────────
   function renderDiff(file) {
-    const empty = document.getElementById('diff-empty');
-    const table = document.getElementById('diff-table');
-    const tbody = document.getElementById('diff-body');
+    const empty       = document.getElementById('diff-empty');
+    const beforeTable = document.getElementById('before-table');
+    const afterTable  = document.getElementById('after-table');
+    const beforeBody  = document.getElementById('before-body');
+    const afterBody   = document.getElementById('after-body');
 
     if (!file.patch) {
       empty.style.display = '';
@@ -625,7 +1037,8 @@ export class MergeRequestPanel {
         : file.status === 'deleted'
           ? 'File deleted'
           : 'Binary file or no diff available';
-      table.style.display = 'none';
+      beforeTable.style.display = 'none';
+      afterTable.style.display  = 'none';
       return;
     }
 
@@ -633,72 +1046,80 @@ export class MergeRequestPanel {
     if (rows.length === 0) {
       empty.style.display = '';
       empty.textContent = 'No changes';
-      table.style.display = 'none';
+      beforeTable.style.display = 'none';
+      afterTable.style.display  = 'none';
       return;
     }
 
     empty.style.display = 'none';
-    table.style.display = '';
-    tbody.innerHTML = '';
+    beforeTable.style.display = '';
+    afterTable.style.display  = '';
+    beforeBody.innerHTML = '';
+    afterBody.innerHTML  = '';
 
-    const fragment = document.createDocumentFragment();
+    var lang = langFromFilename(file.filename);
+    const bFrag = document.createDocumentFragment();
+    const aFrag = document.createDocumentFragment();
     rows.forEach(function(row) {
-      fragment.appendChild(buildRowEl(row));
+      const pair = buildRowEls(row, lang);
+      bFrag.appendChild(pair.before);
+      aFrag.appendChild(pair.after);
     });
-    tbody.appendChild(fragment);
+    beforeBody.appendChild(bFrag);
+    afterBody.appendChild(aFrag);
   }
 
-  function buildRowEl(row) {
-    const tr = document.createElement('tr');
+  function buildRowEls(row, lang) {
+    const trB = document.createElement('tr');
+    const trA = document.createElement('tr');
 
     if (row.type === 'hunk') {
-      tr.className = 'row-hunk';
-      tr.innerHTML = '<td colspan="4">' + esc(row.hunkHeader || '') + '</td>';
-      return tr;
+      trB.className = 'row-hunk';
+      trA.className = 'row-hunk';
+      trB.innerHTML = '<td colspan="2">' + esc(row.hunkHeader || '') + '</td>';
+      trA.innerHTML = '<td colspan="2">' + esc(row.hunkHeader || '') + '</td>';
+      return { before: trB, after: trA };
     }
 
-    // Left side
-    const lnL  = document.createElement('td');
-    const codeL = document.createElement('td');
-    lnL.className  = 'ln';
-    codeL.className = 'code';
+    const lnB   = document.createElement('td');
+    const codeB = document.createElement('td');
+    lnB.className   = 'ln';
+    codeB.className = 'code';
 
-    const lnR  = document.createElement('td');
-    const codeR = document.createElement('td');
-    lnR.className  = 'ln';
-    codeR.className = 'code';
-
-    const div = document.createElement('td');
-    div.className = 'diff-divider';
+    const lnA   = document.createElement('td');
+    const codeA = document.createElement('td');
+    lnA.className   = 'ln';
+    codeA.className = 'code';
 
     if (row.leftType === 'remove') {
-      tr.className = 'row-del';
-      lnL.textContent  = String(row.leftLineNum || '');
-      lnL.className += ' ln-del';
-      codeL.textContent = row.leftContent || '';
-      lnR.textContent  = '';
-      codeR.textContent = '';
+      trB.className = 'row-del';
+      trA.className = 'row-empty';
+      lnB.className += ' ln-del';
+      lnB.textContent  = String(row.leftLineNum || '');
+      codeB.innerHTML  = highlight(row.leftContent || '', lang);
+      lnA.textContent  = '';
+      codeA.textContent = '';
     } else if (row.rightType === 'add') {
-      tr.className = 'row-add';
-      lnL.textContent  = '';
-      codeL.textContent = '';
-      lnR.textContent  = String(row.rightLineNum || '');
-      lnR.className += ' ln-add';
-      codeR.textContent = row.rightContent || '';
+      trB.className = 'row-empty';
+      trA.className = 'row-add';
+      lnA.className += ' ln-add';
+      lnB.textContent  = '';
+      codeB.textContent = '';
+      lnA.textContent  = String(row.rightLineNum || '');
+      codeA.innerHTML  = highlight(row.rightContent || '', lang);
     } else {
       // context
-      lnL.textContent  = row.leftLineNum  ? String(row.leftLineNum)  : '';
-      codeL.textContent = row.leftContent  || '';
-      lnR.textContent  = row.rightLineNum ? String(row.rightLineNum) : '';
-      codeR.textContent = row.rightContent || '';
+      lnB.textContent  = row.leftLineNum  ? String(row.leftLineNum)  : '';
+      codeB.innerHTML  = highlight(row.leftContent  || '', lang);
+      lnA.textContent  = row.rightLineNum ? String(row.rightLineNum) : '';
+      codeA.innerHTML  = highlight(row.rightContent || '', lang);
     }
 
-    tr.appendChild(lnL);
-    tr.appendChild(codeL);
-    tr.appendChild(div);
-    tr.appendChild(lnR);
-    tr.appendChild(codeR);
-    return tr;
+    trB.appendChild(lnB);
+    trB.appendChild(codeB);
+    trA.appendChild(lnA);
+    trA.appendChild(codeA);
+    return { before: trB, after: trA };
   }
 
   // Parse unified diff into display rows
@@ -775,7 +1196,7 @@ export class MergeRequestPanel {
     aiBuffer = '';
     document.getElementById('ai-placeholder').style.display = 'none';
     document.getElementById('ai-content').style.display = 'none';
-    document.getElementById('ai-streaming').style.display = '';
+    document.getElementById('ai-streaming').style.display = 'block';
     document.getElementById('ai-streaming').textContent = '';
     btnAnalyze.disabled = true;
     btnAnalyze.innerHTML = '<span class="spinner"></span> Analyzing...';
@@ -794,7 +1215,7 @@ export class MergeRequestPanel {
     isAnalyzing = false;
     document.getElementById('ai-streaming').style.display = 'none';
     const contentEl = document.getElementById('ai-content');
-    contentEl.style.display = '';
+    contentEl.style.display = 'block';
     contentEl.innerHTML = renderMarkdown(aiBuffer);
     btnAnalyze.disabled = false;
     btnAnalyze.innerHTML =
@@ -807,7 +1228,7 @@ export class MergeRequestPanel {
     isAnalyzing = false;
     document.getElementById('ai-streaming').style.display = 'none';
     const contentEl = document.getElementById('ai-content');
-    contentEl.style.display = '';
+    contentEl.style.display = 'block';
     contentEl.innerHTML = '<p style="color:#f85149"><strong>Analysis failed:</strong> ' + esc(error) + '</p>';
     btnAnalyze.disabled = false;
     btnAnalyze.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg> Retry';

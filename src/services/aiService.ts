@@ -18,6 +18,7 @@ export async function analyzeChanges(
 ): Promise<void> {
   const config = vscode.workspace.getConfiguration('gitmerge');
   const modelFamily: string = config.get('aiModel') ?? 'gpt-4o';
+  const aiLanguage: string = config.get('aiLanguage') ?? 'English';
 
   // Pick the best available model
   const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: modelFamily });
@@ -32,6 +33,7 @@ export async function analyzeChanges(
   const diffContent = buildDiffContent(files);
 
   const systemPrompt = `You are a senior software engineer performing a code review.
+You MUST write your entire response in ${aiLanguage}. All section headings, descriptions, and feedback must be in ${aiLanguage}.
 Analyze the provided code diff and give a structured review with these sections:
 
 ## Summary

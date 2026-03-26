@@ -2,7 +2,7 @@
   "name": "gitmerge-review",
   "displayName": "GitMerge Review",
   "description": "Review GitHub Pull Requests and GitLab Merge Requests with side-by-side diff and AI analysis",
-  "version": "0.1.5",
+  "version": "0.1.14",
   "publisher": "gitmerge",
   "icon": "resources/icon.png",
   "engines": {
@@ -139,6 +139,35 @@
             "claude-3-5-sonnet"
           ],
           "description": "AI model family to use for code analysis (requires GitHub Copilot)"
+        },
+        "gitmerge.aiLanguage": {
+          "type": "string",
+          "default": "English",
+          "enum": [
+            "English",
+            "Indonesian",
+            "Spanish",
+            "French",
+            "German",
+            "Japanese",
+            "Korean",
+            "Chinese (Simplified)",
+            "Portuguese",
+            "Arabic"
+          ],
+          "enumDescriptions": [
+            "English",
+            "Bahasa Indonesia",
+            "Español",
+            "Français",
+            "Deutsch",
+            "日本語",
+            "한국어",
+            "中文（简体）",
+            "Português",
+            "العربية"
+          ],
+          "description": "Language for AI code analysis responses"
         }
       }
     }
