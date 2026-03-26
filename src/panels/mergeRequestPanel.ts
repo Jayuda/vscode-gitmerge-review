@@ -298,7 +298,7 @@ export class MergeRequestPanel {
     :root{--radius:4px;--gap:8px}
     body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size,13px);color:var(--vscode-foreground);background:var(--vscode-editor-background);height:100vh;display:flex;flex-direction:column;overflow:hidden}
     /* ── Header ── */
-    #header{padding:10px 16px;background:var(--vscode-sideBar-background);border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    #header{padding:10px 16px;background:var(--vscode-sideBar-background);border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
     #header-left{flex:1;min-width:0}
     #mr-title{font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
@@ -309,7 +309,18 @@ export class MergeRequestPanel {
     .badge-github{background:#161b22;color:#fff;border:1px solid #30363d}
     .badge-gitlab{background:#fc6d26;color:#fff}
     #mr-meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--vscode-descriptionForeground);flex-wrap:wrap}
-    #header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    #header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+    #header-action-row{display:flex;align-items:center;gap:8px}
+    #header-search-wrap{display:flex;align-items:center;gap:8px;width:100%;justify-content:flex-end}
+    .search-wrap-inner{position:relative;display:inline-flex;align-items:center}
+    .search-wrap-inner svg{position:absolute;left:7px;pointer-events:none;opacity:.45}
+    #file-search{width:240px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:var(--radius);padding:4px 8px 4px 26px;font-size:12px;outline:none;font-family:var(--vscode-font-family)}
+    #file-search:focus{border-color:var(--vscode-focusBorder)}
+    #file-search::placeholder{color:var(--vscode-input-placeholderForeground)}
+    #search-match-count{font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap}
+    #no-search-results{padding:8px 12px;font-size:11px;color:var(--vscode-descriptionForeground);display:none}
+    .file-item.search-hidden{display:none}
+    .search-hl{background:rgb(255,0,0);color:#fff;border-radius:2px;padding:0 1px}
     .branch-arrow{color:var(--vscode-foreground);font-weight:bold;margin:0 4px}
     .meta-icon{margin-right:3px}
     .stat-add{color:#3fb950}
@@ -322,12 +333,6 @@ export class MergeRequestPanel {
     #sidebar-resize{width:5px;flex-shrink:0;cursor:ew-resize;background:transparent;border-right:1px solid var(--vscode-panel-border);transition:background .15s}
     #sidebar-resize:hover,#sidebar-resize.dragging{background:var(--vscode-focusBorder)}
     #sidebar-header{padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);border-bottom:1px solid var(--vscode-panel-border);letter-spacing:.05em}
-    #file-search-wrap{padding:5px 8px;border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0}
-    #file-search{width:100%;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:var(--radius);padding:3px 7px;font-size:12px;outline:none;font-family:var(--vscode-font-family);box-sizing:border-box}
-    #file-search:focus{border-color:var(--vscode-focusBorder)}
-    #file-search::placeholder{color:var(--vscode-input-placeholderForeground)}
-    #no-search-results{padding:8px 12px;font-size:11px;color:var(--vscode-descriptionForeground);display:none}
-    .file-item.search-hidden{display:none}
     #file-list{flex:1;overflow-y:auto}
     .file-item{padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;border-left:2px solid transparent;user-select:none}
     .file-item:hover{background:var(--vscode-list-hoverBackground)}
@@ -463,16 +468,25 @@ export class MergeRequestPanel {
       </div>
     </div>
     <div id="header-actions">
-      <span id="action-status"></span>
-      <button class="btn-action" id="btn-merge">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218z"/></svg>
-        Merge
-      </button>
-      <button class="btn-action" id="btn-reject">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
-        Close / Reject
-      </button>
-      <button class="btn-action" id="btn-open">&#x2197; Open in Browser</button>
+      <div id="header-action-row">
+        <span id="action-status"></span>
+        <button class="btn-action" id="btn-merge">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218z"/></svg>
+          Merge
+        </button>
+        <button class="btn-action" id="btn-reject">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
+          Close / Reject
+        </button>
+        <button class="btn-action" id="btn-open">&#x2197; Open in Browser</button>
+      </div>
+      <div id="header-search-wrap">
+        <div class="search-wrap-inner">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.75.75 0 0 1-1.06 1.06Zm-1.217-1.982a4.5 4.5 0 1 0-6.365-6.365 4.5 4.5 0 0 0 6.365 6.365z"/></svg>
+          <input id="file-search" type="text" placeholder="Search files &amp; content..." autocomplete="off" spellcheck="false">
+        </div>
+        <span id="search-match-count"></span>
+      </div>
     </div>
   </div>
 
@@ -481,9 +495,6 @@ export class MergeRequestPanel {
     <!-- File sidebar -->
     <div id="file-sidebar">
       <div id="sidebar-header">Files Changed (<span id="file-count">0</span>)</div>
-      <div id="file-search-wrap">
-        <input id="file-search" type="text" placeholder="Filter files..." autocomplete="off" spellcheck="false">
-      </div>
       <div id="no-search-results">No matching files</div>
       <div id="file-list"></div>
     </div>
@@ -584,6 +595,7 @@ export class MergeRequestPanel {
   let currentFileIdx = 0;
   let aiBuffer = '';
   let isAnalyzing = false;
+  let currentSearchQuery = '';
 
   // ─── Message handler ─────────────────────────────────────────────────────
   // Listener and 'ready' handshake are intentionally first so UI binding bugs
@@ -821,18 +833,81 @@ export class MergeRequestPanel {
     }
   }
 
+  function highlightFname(filename, q) {
+    if (!q) { return esc(filename); }
+    var ql = q.toLowerCase();
+    var lower = filename.toLowerCase();
+    var idx = lower.indexOf(ql);
+    if (idx === -1) { return esc(filename); }
+    var out = '', pos = 0;
+    while (idx !== -1) {
+      out += esc(filename.slice(pos, idx));
+      out += '<span class="search-hl">' + esc(filename.slice(idx, idx + ql.length)) + '</span>';
+      pos = idx + ql.length;
+      idx = lower.indexOf(ql, pos);
+    }
+    return out + esc(filename.slice(pos));
+  }
+
+  function applySearchMark(el, q) {
+    if (!q || !el) { return; }
+    var ql = q.toLowerCase();
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    var node;
+    while ((node = walker.nextNode())) { nodes.push(node); }
+    nodes.forEach(function(tn) {
+      var text = tn.nodeValue;
+      var lower = text.toLowerCase();
+      var idx = lower.indexOf(ql);
+      if (idx === -1) { return; }
+      var frag = document.createDocumentFragment();
+      var pos = 0;
+      while (idx !== -1) {
+        if (idx > pos) { frag.appendChild(document.createTextNode(text.slice(pos, idx))); }
+        var mark = document.createElement('span');
+        mark.className = 'search-hl';
+        mark.textContent = text.slice(idx, idx + ql.length);
+        frag.appendChild(mark);
+        pos = idx + ql.length;
+        idx = lower.indexOf(ql, pos);
+      }
+      if (pos < text.length) { frag.appendChild(document.createTextNode(text.slice(pos))); }
+      tn.parentNode.replaceChild(frag, tn);
+    });
+  }
+
   function filterFileList() {
     var q = (fileSearch ? fileSearch.value : '').toLowerCase().trim();
+    currentSearchQuery = q;
     var visible = 0;
     document.querySelectorAll('.file-item').forEach(function(el) {
-      var fnameEl = el.querySelector('.fname');
-      var fname = fnameEl ? fnameEl.textContent.toLowerCase() : '';
-      var match = !q || fname.indexOf(q) !== -1;
+      var idx = parseInt(el.dataset.index, 10);
+      var file = currentFiles[idx];
+      var fname = (file ? file.filename : '').toLowerCase();
+      var patch = (file && file.patch ? file.patch : '').toLowerCase();
+      var match = !q || fname.indexOf(q) !== -1 || patch.indexOf(q) !== -1;
       el.classList.toggle('search-hidden', !match);
       if (match) { visible++; }
+      var fnameEl = el.querySelector('.fname');
+      if (fnameEl && file) { fnameEl.innerHTML = highlightFname(file.filename, q); }
     });
+    var matchCountEl = document.getElementById('search-match-count');
+    if (matchCountEl) {
+      matchCountEl.textContent = q ? (visible + ' / ' + currentFiles.length + ' files') : '';
+    }
     if (noSearchResults) {
       noSearchResults.style.display = (visible === 0 && q) ? '' : 'none';
+    }
+    // If searching, auto-select the first matching file; otherwise re-render current with updated highlights
+    if (q && visible > 0) {
+      var firstMatchEl = document.querySelector('.file-item:not(.search-hidden)');
+      if (firstMatchEl) {
+        var firstIdx = parseInt(firstMatchEl.dataset.index, 10);
+        selectFile(firstIdx);
+      }
+    } else {
+      if (currentFiles[currentFileIdx]) { renderDiff(currentFiles[currentFileIdx], q); }
     }
   }
 
@@ -842,6 +917,8 @@ export class MergeRequestPanel {
     document.getElementById('file-count').textContent = String(files.length);
     if (fileSearch) { fileSearch.value = ''; }
     if (noSearchResults) { noSearchResults.style.display = 'none'; }
+    var matchCountEl = document.getElementById('search-match-count');
+    if (matchCountEl) { matchCountEl.textContent = ''; }
     const list = document.getElementById('file-list');
     list.innerHTML = '';
     files.forEach(function(f, i) {
@@ -881,7 +958,7 @@ export class MergeRequestPanel {
       ' <span class="stat-del">-' + file.deletions + '</span>';
 
     // Render diff
-    renderDiff(file);
+    renderDiff(file, currentSearchQuery);
 
     // Scroll sidebar item into view
     const items = document.querySelectorAll('.file-item');
@@ -1130,7 +1207,7 @@ export class MergeRequestPanel {
   }
 
   // ─── Diff rendering ───────────────────────────────────────────────────────
-  function renderDiff(file) {
+  function renderDiff(file, q) {
     const empty       = document.getElementById('diff-empty');
     const beforeTable = document.getElementById('before-table');
     const afterTable  = document.getElementById('after-table');
@@ -1168,7 +1245,7 @@ export class MergeRequestPanel {
     const bFrag = document.createDocumentFragment();
     const aFrag = document.createDocumentFragment();
     rows.forEach(function(row) {
-      const pair = buildRowEls(row, lang);
+      const pair = buildRowEls(row, lang, q);
       bFrag.appendChild(pair.before);
       aFrag.appendChild(pair.after);
     });
@@ -1176,7 +1253,7 @@ export class MergeRequestPanel {
     afterBody.appendChild(aFrag);
   }
 
-  function buildRowEls(row, lang) {
+  function buildRowEls(row, lang, q) {
     const trB = document.createElement('tr');
     const trA = document.createElement('tr');
 
@@ -1204,6 +1281,7 @@ export class MergeRequestPanel {
       lnB.className += ' ln-del';
       lnB.textContent  = String(row.leftLineNum || '');
       codeB.innerHTML  = highlight(row.leftContent || '', lang);
+      applySearchMark(codeB, q);
       lnA.textContent  = '';
       codeA.textContent = '';
     } else if (row.rightType === 'add') {
@@ -1214,12 +1292,15 @@ export class MergeRequestPanel {
       codeB.textContent = '';
       lnA.textContent  = String(row.rightLineNum || '');
       codeA.innerHTML  = highlight(row.rightContent || '', lang);
+      applySearchMark(codeA, q);
     } else {
       // context
       lnB.textContent  = row.leftLineNum  ? String(row.leftLineNum)  : '';
       codeB.innerHTML  = highlight(row.leftContent  || '', lang);
+      applySearchMark(codeB, q);
       lnA.textContent  = row.rightLineNum ? String(row.rightLineNum) : '';
       codeA.innerHTML  = highlight(row.rightContent || '', lang);
+      applySearchMark(codeA, q);
     }
 
     trB.appendChild(lnB);
