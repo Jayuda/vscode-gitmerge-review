@@ -201,6 +201,21 @@ export async function closeGithubPR(
   });
 }
 
+export async function postGithubPRComment(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  body: string,
+  token: string
+): Promise<void> {
+  const url = `${BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${prNumber}/comments`;
+  await httpRequest(url, {
+    method: 'POST',
+    headers: basicHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function mapPR(pr: GHPullRequest, owner: string, repo: string): MergeRequest {

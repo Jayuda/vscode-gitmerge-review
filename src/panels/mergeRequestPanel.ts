@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { MergeRequest, ChangedFile } from '../models/types';
-import { getGithubPRFiles, getGithubPRDetails, mergeGithubPR, closeGithubPR } from '../services/githubService';
-import { getGitlabMRChanges, mergeGitlabMR, closeGitlabMR } from '../services/gitlabService';
+import { getGithubPRFiles, getGithubPRDetails, mergeGithubPR, closeGithubPR, postGithubPRComment } from '../services/githubService';
+import { getGitlabMRChanges, mergeGitlabMR, closeGitlabMR, postGitlabMRNote } from '../services/gitlabService';
 import { analyzeChanges } from '../services/aiService';
 import { outputChannel } from '../providers/mergeRequestProvider';
 
@@ -146,6 +146,9 @@ export class MergeRequestPanel {
       case 'openUrl':
         vscode.env.openExternal(vscode.Uri.parse(this._mr.url));
         break;
+      case 'postComment':
+        await this._postComment(message.body as string);
+        break;
     }
   }
 
@@ -201,6 +204,32 @@ export class MergeRequestPanel {
     } catch (err) {
       this._panel.webview.postMessage({ type: 'actionDone', action: 'merge', success: false, error: String(err) });
       vscode.window.showErrorMessage(`Merge failed: ${String(err)}`);
+    }
+  }
+
+  private async _postComment(body: string): Promise<void> {
+    if (!body || !body.trim()) { return; }
+
+    this._panel.webview.postMessage({ type: 'commentStart' });
+
+    try {
+      const config = vscode.workspace.getConfiguration('gitmerge');
+      if (this._mr.provider === 'github') {
+        const token = await this._context.secrets.get('gitmerge.githubToken');
+        if (!token) { throw new Error('GitHub token not configured.'); }
+        await postGithubPRComment(this._mr.repoOwner, this._mr.repoName, this._mr.number, body, token);
+      } else {
+        const token = await this._context.secrets.get('gitmerge.gitlabToken');
+        if (!token) { throw new Error('GitLab token not configured.'); }
+        const gitlabUrl: string = config.get('gitlabUrl') ?? 'https://gitlab.com';
+        const projectId = (this._mr as MergeRequest & { gitlabProjectId?: string | number }).gitlabProjectId ?? `${this._mr.repoOwner}/${this._mr.repoName}`;
+        await postGitlabMRNote(projectId, this._mr.iid, body, token, gitlabUrl);
+      }
+      this._panel.webview.postMessage({ type: 'commentDone' });
+      vscode.window.showInformationMessage('Comment posted successfully.');
+    } catch (err) {
+      this._panel.webview.postMessage({ type: 'commentError', error: String(err) });
+      vscode.window.showErrorMessage(`Comment failed: ${String(err)}`);
     }
   }
 
@@ -269,8 +298,9 @@ export class MergeRequestPanel {
     :root{--radius:4px;--gap:8px}
     body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size,13px);color:var(--vscode-foreground);background:var(--vscode-editor-background);height:100vh;display:flex;flex-direction:column;overflow:hidden}
     /* ── Header ── */
-    #header{padding:12px 16px;background:var(--vscode-sideBar-background);border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0}
-    #mr-title{font-size:15px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    #header{padding:10px 16px;background:var(--vscode-sideBar-background);border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    #header-left{flex:1;min-width:0}
+    #mr-title{font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
     .badge-open{background:#238636;color:#fff}
     .badge-merged{background:#8957e5;color:#fff}
@@ -279,6 +309,7 @@ export class MergeRequestPanel {
     .badge-github{background:#161b22;color:#fff;border:1px solid #30363d}
     .badge-gitlab{background:#fc6d26;color:#fff}
     #mr-meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--vscode-descriptionForeground);flex-wrap:wrap}
+    #header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
     .branch-arrow{color:var(--vscode-foreground);font-weight:bold;margin:0 4px}
     .meta-icon{margin-right:3px}
     .stat-add{color:#3fb950}
@@ -381,18 +412,27 @@ export class MergeRequestPanel {
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
     @keyframes spin{to{transform:rotate(360deg)}}
     /* ── Action bar ── */
-    #action-bar{padding:10px 14px;background:var(--vscode-sideBar-background);border-top:1px solid var(--vscode-panel-border);display:flex;align-items:center;gap:10px;flex-shrink:0}
-    .btn-action{padding:7px 18px;border:none;border-radius:var(--radius);cursor:pointer;font-size:13px;font-weight:600;transition:background .15s;display:flex;align-items:center;gap:6px}
+    .btn-action{padding:6px 14px;border:none;border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:600;transition:background .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
     .btn-action:disabled{opacity:.5;cursor:not-allowed}
-    #btn-merge{background:#238636;color:#fff;flex:1}
+    #btn-merge{background:#238636;color:#fff}
     #btn-merge:hover:not(:disabled){background:#2ea043}
-    #btn-reject{background:transparent;color:var(--vscode-foreground);border:1px solid #da3633;flex:1}
+    #btn-reject{background:transparent;color:var(--vscode-foreground);border:1px solid #da3633}
     #btn-reject:hover:not(:disabled){background:rgba(218,54,51,.12);color:#f85149}
-    #btn-open{background:transparent;color:var(--vscode-textLink-foreground);border:1px solid var(--vscode-panel-border);padding:7px 14px}
+    #btn-open{background:transparent;color:var(--vscode-textLink-foreground);border:1px solid var(--vscode-panel-border)}
     #btn-open:hover{background:var(--vscode-list-hoverBackground)}
-    #action-status{font-size:11px;color:var(--vscode-descriptionForeground);flex-shrink:0;min-width:80px}
+    #action-status{font-size:11px;color:var(--vscode-descriptionForeground);flex-shrink:0}
     /* ── Empty diff ── */
     .empty-diff{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--vscode-descriptionForeground);gap:8px}
+    /* ── Comment panel ── */
+    #comment-panel{flex-shrink:0;background:var(--vscode-sideBar-background);border-top:1px solid var(--vscode-panel-border);padding:8px 14px 10px;display:flex;flex-direction:column;gap:6px}
+    #comment-panel-header{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700}
+    #comment-textarea{width:100%;resize:vertical;min-height:52px;max-height:160px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:var(--radius);padding:6px 8px;font-family:var(--vscode-font-family);font-size:12px;outline:none}
+    #comment-textarea:focus{border-color:var(--vscode-focusBorder)}
+    #comment-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+    #comment-status{font-size:11px;color:var(--vscode-descriptionForeground)}
+    #btn-post-comment{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:5px 14px;border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px}
+    #btn-post-comment:hover:not(:disabled){background:var(--vscode-button-hoverBackground)}
+    #btn-post-comment:disabled{opacity:.55;cursor:not-allowed}
     /* ── Scrollbar ── */
     ::-webkit-scrollbar{width:8px;height:8px}
     ::-webkit-scrollbar-track{background:transparent}
@@ -402,17 +442,31 @@ export class MergeRequestPanel {
 </head>
 <body>
   <div id="header">
-    <div id="mr-title">
-      <span id="h-title">Loading...</span>
-      <span id="h-state" class="badge"></span>
-      <span id="h-draft" class="badge badge-draft" style="display:none">Draft</span>
-      <span id="h-provider" class="badge"></span>
+    <div id="header-left">
+      <div id="mr-title">
+        <span id="h-title">Loading...</span>
+        <span id="h-state" class="badge"></span>
+        <span id="h-draft" class="badge badge-draft" style="display:none">Draft</span>
+        <span id="h-provider" class="badge"></span>
+      </div>
+      <div id="mr-meta">
+        <span id="h-author"></span>
+        <span id="h-branches"></span>
+        <span id="h-stats"></span>
+        <span id="h-date"></span>
+      </div>
     </div>
-    <div id="mr-meta">
-      <span id="h-author"></span>
-      <span id="h-branches"></span>
-      <span id="h-stats"></span>
-      <span id="h-date"></span>
+    <div id="header-actions">
+      <span id="action-status"></span>
+      <button class="btn-action" id="btn-merge">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218z"/></svg>
+        Merge
+      </button>
+      <button class="btn-action" id="btn-reject">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
+        Close / Reject
+      </button>
+      <button class="btn-action" id="btn-open">&#x2197; Open in Browser</button>
     </div>
   </div>
 
@@ -490,21 +544,25 @@ export class MergeRequestPanel {
         <div id="ai-content" class="ai-content"></div>
       </div>
     </div>
+
+    <!-- Comment panel -->
+    <div id="comment-panel">
+      <div id="comment-panel-header">
+        <span>💬 Post Comment</span>
+        <span id="comment-status"></span>
+      </div>
+      <textarea id="comment-textarea" rows="2" placeholder="Leave a comment on this merge request..."></textarea>
+      <div id="comment-footer">
+        <button id="btn-post-comment">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2.75a.25.25 0 0 1 .25-.25h12.5a.25.25 0 0 1 .25.25v8.5a.25.25 0 0 1-.25.25h-6.5a.75.75 0 0 0-.53.22L4.5 14.44v-2.19a.75.75 0 0 0-.75-.75H1.75a.25.25 0 0 1-.25-.25Zm.25-1.75C.784 1 0 1.784 0 2.75v8.5C0 12.216.784 13 1.75 13H3v2.25a.75.75 0 0 0 1.28.53l2.69-2.78H14.25c.966 0 1.75-.784 1.75-1.75v-8.5C16 1.784 15.216 1 14.25 1Z"/></svg>
+          Post Comment
+        </button>
+      </div>
+    </div>
   </div>
 
-  <!-- Action bar -->
-  <div id="action-bar">
-    <button class="btn-action" id="btn-merge">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218z"/></svg>
-      Merge
-    </button>
-    <button class="btn-action" id="btn-reject">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
-      Close / Reject
-    </button>
-    <button class="btn-action" id="btn-open">&#x2197; Open in Browser</button>
-    <span id="action-status"></span>
-  </div>
+
+
 
 <script nonce="${nonce}">
 (function() {
@@ -537,6 +595,9 @@ export class MergeRequestPanel {
       case 'analysisError': onAnalysisError(msg.error);       break;
       case 'actionStart':   onActionStart(msg.action);        break;
       case 'actionDone':    onActionDone(msg.action, msg.success, msg.error); break;
+      case 'commentStart':  onCommentStart();                 break;
+      case 'commentDone':   onCommentDone();                  break;
+      case 'commentError':  onCommentError(msg.error);        break;
     }
   });
 
@@ -544,12 +605,15 @@ export class MergeRequestPanel {
   vscode.postMessage({ type: 'ready' });
 
   // ─── Elements ────────────────────────────────────────────────────────────
-  const btnAnalyze = document.getElementById('btn-analyze');
-  const btnCancel  = document.getElementById('btn-cancel');
-  const btnMerge   = document.getElementById('btn-merge');
-  const btnReject  = document.getElementById('btn-reject');
-  const btnOpen    = document.getElementById('btn-open');
-  const actStatus  = document.getElementById('action-status');
+  const btnAnalyze       = document.getElementById('btn-analyze');
+  const btnCancel        = document.getElementById('btn-cancel');
+  const btnMerge         = document.getElementById('btn-merge');
+  const btnReject        = document.getElementById('btn-reject');
+  const btnOpen          = document.getElementById('btn-open');
+  const actStatus        = document.getElementById('action-status');
+  const btnPostComment   = document.getElementById('btn-post-comment');
+  const commentTextarea  = document.getElementById('comment-textarea');
+  const commentStatus    = document.getElementById('comment-status');
 
   // ─── Sidebar resize ───────────────────────────────────────────────────────
   (function() {
@@ -681,6 +745,18 @@ export class MergeRequestPanel {
   });
   btnOpen?.addEventListener('click', () => {
     vscode.postMessage({ type: 'openUrl' });
+  });
+  btnPostComment?.addEventListener('click', () => {
+    const body = commentTextarea.value.trim();
+    if (!body) { return; }
+    vscode.postMessage({ type: 'postComment', body });
+  });
+  commentTextarea?.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      const body = commentTextarea.value.trim();
+      if (!body) { return; }
+      vscode.postMessage({ type: 'postComment', body });
+    }
   });
 
   function showInitError(msg) {
@@ -1233,6 +1309,31 @@ export class MergeRequestPanel {
     btnAnalyze.disabled = false;
     btnAnalyze.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg> Retry';
     btnCancel.style.display = 'none';
+  }
+
+  // ─── Comment ──────────────────────────────────────────────────────────────
+  function onCommentStart() {
+    btnPostComment.disabled = true;
+    btnPostComment.innerHTML = '<span class="spinner"></span> Posting...';
+    commentStatus.textContent = '';
+  }
+
+  function onCommentDone() {
+    btnPostComment.disabled = false;
+    btnPostComment.innerHTML =
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2.75a.25.25 0 0 1 .25-.25h12.5a.25.25 0 0 1 .25.25v8.5a.25.25 0 0 1-.25.25h-6.5a.75.75 0 0 0-.53.22L4.5 14.44v-2.19a.75.75 0 0 0-.75-.75H1.75a.25.25 0 0 1-.25-.25Zm.25-1.75C.784 1 0 1.784 0 2.75v8.5C0 12.216.784 13 1.75 13H3v2.25a.75.75 0 0 0 1.28.53l2.69-2.78H14.25c.966 0 1.75-.784 1.75-1.75v-8.5C16 1.784 15.216 1 14.25 1Z"/></svg>' +
+      ' Post Comment';
+    commentStatus.innerHTML = '<span style="color:#3fb950">✓ Comment posted!</span>';
+    commentTextarea.value = '';
+    setTimeout(function() { commentStatus.textContent = ''; }, 3000);
+  }
+
+  function onCommentError(error) {
+    btnPostComment.disabled = false;
+    btnPostComment.innerHTML =
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2.75a.25.25 0 0 1 .25-.25h12.5a.25.25 0 0 1 .25.25v8.5a.25.25 0 0 1-.25.25h-6.5a.75.75 0 0 0-.53.22L4.5 14.44v-2.19a.75.75 0 0 0-.75-.75H1.75a.25.25 0 0 1-.25-.25Zm.25-1.75C.784 1 0 1.784 0 2.75v8.5C0 12.216.784 13 1.75 13H3v2.25a.75.75 0 0 0 1.28.53l2.69-2.78H14.25c.966 0 1.75-.784 1.75-1.75v-8.5C16 1.784 15.216 1 14.25 1Z"/></svg>' +
+      ' Post Comment';
+    commentStatus.innerHTML = '<span style="color:#f85149">✗ ' + esc(error) + '</span>';
   }
 
   // ─── Actions ─────────────────────────────────────────────────────────────

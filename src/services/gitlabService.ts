@@ -169,6 +169,22 @@ export async function closeGitlabMR(
   });
 }
 
+export async function postGitlabMRNote(
+  projectId: string | number,
+  mrIid: number,
+  body: string,
+  token: string,
+  gitlabUrl: string
+): Promise<void> {
+  const base = normalizeUrl(gitlabUrl);
+  const url = `${base}/api/v4/projects/${encodeURIComponent(String(projectId))}/merge_requests/${mrIid}/notes`;
+  await httpRequest(url, {
+    method: 'POST',
+    headers: bearerHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+}
+
 export async function resolveGitlabProjectId(
   owner: string,
   repo: string,
