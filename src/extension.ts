@@ -4,6 +4,10 @@ import { MergeRequestPanel } from './panels/mergeRequestPanel';
 import { MergeRequest } from './models/types';
 
 export function activate(context: vscode.ExtensionContext): void {
+  const ext = vscode.extensions.getExtension('gitmerge.gitmerge-review');
+  const version = ext?.packageJSON?.version ?? context.extension?.packageJSON?.version ?? 'unknown';
+  outputChannel.appendLine(`[GitMerge] Extension activated — v${version}`);
+
   const provider = new MergeRequestProvider(context);
 
   // ─── TreeView ─────────────────────────────────────────────────────────────

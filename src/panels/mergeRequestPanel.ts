@@ -463,34 +463,9 @@ export class MergeRequestPanel {
   let aiBuffer = '';
   let isAnalyzing = false;
 
-  // ─── Elements ────────────────────────────────────────────────────────────
-  const btnAnalyze = document.getElementById('btn-analyze');
-  const btnCancel  = document.getElementById('btn-cancel');
-  const btnMerge   = document.getElementById('btn-merge');
-  const btnReject  = document.getElementById('btn-reject');
-  const btnOpen    = document.getElementById('btn-open');
-  const actStatus  = document.getElementById('action-status');
-
-  // ─── Button events ────────────────────────────────────────────────────────
-  btnAnalyze.addEventListener('click', () => {
-    vscode.postMessage({ type: 'analyze' });
-  });
-  btnCancel.addEventListener('click', () => {
-    vscode.postMessage({ type: 'cancelAnalysis' });
-  });
-  btnMerge.addEventListener('click', () => {
-    vscode.postMessage({ type: 'merge' });
-  });
-  btnReject.addEventListener('click', () => {
-    vscode.postMessage({ type: 'reject' });
-  });
-  btnOpen.addEventListener('click', () => {
-    vscode.postMessage({ type: 'openUrl' });
-  });
-
   // ─── Message handler ─────────────────────────────────────────────────────
-  // IMPORTANT: listener must be registered BEFORE sending 'ready',
-  // so the 'init' response from the extension cannot arrive before the handler is set up.
+  // Listener and 'ready' handshake are intentionally first so UI binding bugs
+  // can't block initial data delivery.
   window.addEventListener('message', function(event) {
     const msg = event.data;
     switch (msg.type) {
@@ -511,9 +486,33 @@ export class MergeRequestPanel {
     }
   });
 
-  // Notify extension that the webview script is ready to receive data.
-  // Listener is already registered above — 'init' cannot arrive before the handler.
+  // Notify extension that the webview is ready to receive init payload.
   vscode.postMessage({ type: 'ready' });
+
+  // ─── Elements ────────────────────────────────────────────────────────────
+  const btnAnalyze = document.getElementById('btn-analyze');
+  const btnCancel  = document.getElementById('btn-cancel');
+  const btnMerge   = document.getElementById('btn-merge');
+  const btnReject  = document.getElementById('btn-reject');
+  const btnOpen    = document.getElementById('btn-open');
+  const actStatus  = document.getElementById('action-status');
+
+  // ─── Button events ────────────────────────────────────────────────────────
+  btnAnalyze?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'analyze' });
+  });
+  btnCancel?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'cancelAnalysis' });
+  });
+  btnMerge?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'merge' });
+  });
+  btnReject?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'reject' });
+  });
+  btnOpen?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openUrl' });
+  });
 
   function showInitError(msg) {
     document.body.innerHTML =
@@ -525,10 +524,10 @@ export class MergeRequestPanel {
   }
 
   function onInit(mr, files) {
-    currentFiles = files || [];
+    currentFiles = Array.isArray(files) ? files : [];
     renderHeader(mr);
-    renderFileList(files, mr);
-    if (files.length > 0) {
+    renderFileList(currentFiles, mr);
+    if (currentFiles.length > 0) {
       selectFile(0);
     }
   }
@@ -846,7 +845,7 @@ export class MergeRequestPanel {
     var processed = md.replace(/\x60\x60\x60[\w]*\n?([\s\S]*?)\x60\x60\x60/g, function(_, code) {
       var idx = codeBlocks.length;
       codeBlocks.push('<pre><code>' + esc(code.trim()) + '</code></pre>');
-      return '\x00CB' + idx + '\x00';
+      return '__CB_' + idx + '__';
     });
 
     // Save inline code
@@ -854,15 +853,15 @@ export class MergeRequestPanel {
     processed = processed.replace(/\x60([^\x60\n]+)\x60/g, function(_, code) {
       var idx = inlineCodes.length;
       inlineCodes.push('<code>' + esc(code) + '</code>');
-      return '\x00IC' + idx + '\x00';
+      return '__IC_' + idx + '__';
     });
 
     // Escape remaining HTML entities
     processed = esc(processed);
 
     // Restore placeholders that were escaped
-    processed = processed.replace(/\x00CB(\d+)\x00/g, function(_, i) { return codeBlocks[parseInt(i)]; });
-    processed = processed.replace(/\x00IC(\d+)\x00/g, function(_, i) { return inlineCodes[parseInt(i)]; });
+    processed = processed.replace(/__CB_(\d+)__/g, function(_, i) { return codeBlocks[parseInt(i)]; });
+    processed = processed.replace(/__IC_(\d+)__/g, function(_, i) { return inlineCodes[parseInt(i)]; });
 
     // Recommendation boxes
     processed = processed.replace(/✅\s*\*\*APPROVE\*\*([^\n]*)/g,

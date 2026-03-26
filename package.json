@@ -2,7 +2,7 @@
   "name": "gitmerge-review",
   "displayName": "GitMerge Review",
   "description": "Review GitHub Pull Requests and GitLab Merge Requests with side-by-side diff and AI analysis",
-  "version": "0.1.2",
+  "version": "0.1.5",
   "publisher": "gitmerge",
   "icon": "resources/icon.png",
   "engines": {
