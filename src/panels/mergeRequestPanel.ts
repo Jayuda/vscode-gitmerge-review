@@ -466,6 +466,7 @@ export class MergeRequestPanel {
         <span id="h-author"></span>
         <span id="h-branches"></span>
         <span id="h-stats"></span>
+        <span id="h-created"></span>
         <span id="h-date"></span>
       </div>
     </div>
@@ -840,9 +841,15 @@ export class MergeRequestPanel {
       ' · ' + mr.changedFilesCount + ' files';
     document.getElementById('h-stats').innerHTML = statsHtml;
 
+    if (mr.createdAt) {
+      document.getElementById('h-created').innerHTML =
+        '<span class="meta-icon">📅</span>opened ' + esc(formatRelative(mr.createdAt));
+      document.getElementById('h-created').title = 'Opened ' + formatDate(mr.createdAt);
+    }
+
     if (mr.updatedAt) {
       document.getElementById('h-date').innerHTML =
-        '<span class="meta-icon">🕒</span>' + formatDate(mr.updatedAt);
+        '<span class="meta-icon">🕒</span>updated ' + formatDate(mr.updatedAt);
     }
   }
 
@@ -1572,6 +1579,21 @@ export class MergeRequestPanel {
     try {
       return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     } catch(e) { return iso; }
+  }
+
+  function formatRelative(iso) {
+    var then = new Date(iso).getTime();
+    if (isNaN(then)) { return ''; }
+    var diff = Date.now() - then;
+    var MIN = 60000, HOUR = 3600000, DAY = 86400000;
+    if (diff < MIN) { return 'just now'; }
+    if (diff < HOUR) { return Math.floor(diff / MIN) + 'm ago'; }
+    if (diff < DAY) { return Math.floor(diff / HOUR) + 'h ago'; }
+    if (diff < 30 * DAY) {
+      var days = Math.floor(diff / DAY);
+      return days < 7 ? days + 'd ago' : Math.floor(days / 7) + 'w ago';
+    }
+    return formatDate(iso);
   }
 })();
 </script>

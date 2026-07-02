@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { MergeRequest, Provider } from '../models/types';
 import { getAssignedGithubPRs } from '../services/githubService';
 import { getAssignedGitlabMRs } from '../services/gitlabService';
+import { formatRelativeTime } from '../utils/timeUtils';
 
 export const outputChannel = vscode.window.createOutputChannel('GitMerge');
 
@@ -67,10 +68,12 @@ export class MergeRequestNode extends vscode.TreeItem {
     super(mr.title, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'mergeRequest';
     const num = mr.provider === 'gitlab' ? `!${mr.number}` : `#${mr.number}`;
-    this.description = num;
+    const age = mr.createdAt ? formatRelativeTime(mr.createdAt) : '';
+    this.description = age ? `${num} · ${age}` : num;
     this.tooltip = new vscode.MarkdownString(
       `**${mr.title}**\n\n` +
       `By **${mr.author}** · ${formatDate(mr.updatedAt)}\n\n` +
+      (mr.createdAt ? `Opened ${formatRelativeTime(mr.createdAt)} (${formatDate(mr.createdAt)})\n\n` : '') +
       (mr.sourceBranch ? `\`${mr.sourceBranch}\` → \`${mr.targetBranch}\`\n\n` : '') +
       `${mr.repoFullName}`
     );

@@ -71,10 +71,10 @@ export async function getAssignedGitlabMRs(
   let reviewerRaw: GLMergeRequest[] = [];
   if (userResult.status === 'fulfilled' && userResult.value.username) {
     const username = userResult.value.username;
-    log?.appendLine(`[GitLab] GET /api/v4/merge_requests?reviewer_username=${username}`);
+    log?.appendLine(`[GitLab] GET /api/v4/merge_requests?scope=all&reviewer_username=${username}`);
     try {
       reviewerRaw = await httpRequest(
-        `${base}/api/v4/merge_requests?reviewer_username=${encodeURIComponent(username)}&state=opened&per_page=100`,
+        `${base}/api/v4/merge_requests?scope=all&reviewer_username=${encodeURIComponent(username)}&state=opened&per_page=100`,
         { headers }
       ) as GLMergeRequest[];
       log?.appendLine(`[GitLab] reviewer_username returned ${reviewerRaw.length} MR(s)`);
