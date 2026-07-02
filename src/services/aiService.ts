@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { spawn } from 'child_process';
 import { ChangedFile, MergeRequest } from '../models/types';
 
 export type AnalysisChunkCallback = (chunk: string) => void;
@@ -6,7 +7,8 @@ export type AnalysisDoneCallback = () => void;
 
 /**
  * Streams an AI analysis of the changed files in the given merge request.
- * Uses VS Code's built-in Language Model API (requires GitHub Copilot).
+ * Uses VS Code's built-in Language Model API (requires GitHub Copilot),
+ * or the Claude Code CLI when a "claude-code" model is selected.
  * Calls onChunk for each streamed token, then onDone when finished.
  */
 export async function analyzeChanges(
@@ -20,6 +22,14 @@ export async function analyzeChanges(
   const modelFamily: string = config.get('aiModel') ?? 'gpt-4o';
   const aiLanguage: string = config.get('aiLanguage') ?? 'English';
 
+  const { systemPrompt, userPrompt } = buildPrompts(mr, files, aiLanguage);
+
+  if (modelFamily.startsWith('claude-code')) {
+    await analyzeWithClaudeCode(modelFamily, systemPrompt + '\n\n' + userPrompt, onChunk, token);
+    onDone();
+    return;
+  }
+
   // Pick the best available model
   const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: modelFamily });
   const model = models[0] ?? (await vscode.lm.selectChatModels({ vendor: 'copilot' }))[0];
@@ -30,6 +40,132 @@ export async function analyzeChanges(
     );
   }
 
+  const messages = [
+    vscode.LanguageModelChatMessage.User(systemPrompt + '\n\n' + userPrompt),
+  ];
+
+  const response = await model.sendRequest(messages, {}, token);
+
+  for await (const chunk of response.text) {
+    if (token.isCancellationRequested) {
+      break;
+    }
+    onChunk(chunk);
+  }
+
+  onDone();
+}
+
+/**
+ * Runs the Claude Code CLI in non-interactive mode (-p) with streaming JSON
+ * output, forwarding assistant text to onChunk. The prompt is written to
+ * stdin to avoid command-line length/quoting limits with large diffs.
+ */
+function analyzeWithClaudeCode(
+  modelFamily: string,
+  prompt: string,
+  onChunk: AnalysisChunkCallback,
+  token: vscode.CancellationToken
+): Promise<void> {
+  const config = vscode.workspace.getConfiguration('gitmerge');
+  const cliPath: string = config.get('claudeCodePath') ?? 'claude';
+
+  const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+  const modelSuffix = modelFamily.split(':')[1]; // "claude-code:sonnet" -> "sonnet"
+  if (modelSuffix) {
+    args.push('--model', modelSuffix);
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(cliPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    const cancelSub = token.onCancellationRequested(() => child.kill());
+
+    let stderr = '';
+    let buffered = '';
+    let sawText = false;
+
+    child.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.stdout.on('data', (data: Buffer) => {
+      buffered += data.toString();
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? ''; // keep the trailing partial line
+      for (const line of lines) {
+        const text = extractClaudeText(line);
+        if (text) {
+          sawText = true;
+          onChunk(text);
+        }
+      }
+    });
+
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      cancelSub.dispose();
+      if (err.code === 'ENOENT') {
+        reject(new Error(
+          `Claude Code CLI not found at "${cliPath}". Please install Claude Code and sign in, ` +
+          'or set "gitmerge.claudeCodePath" to its full path.'
+        ));
+      } else {
+        reject(new Error(`Failed to start Claude Code CLI: ${err.message}`));
+      }
+    });
+
+    child.on('close', (code) => {
+      cancelSub.dispose();
+      if (token.isCancellationRequested) {
+        resolve();
+        return;
+      }
+      const text = extractClaudeText(buffered);
+      if (text) {
+        sawText = true;
+        onChunk(text);
+      }
+      if (code !== 0 && !sawText) {
+        reject(new Error(
+          `Claude Code CLI exited with code ${code}. ${stderr.trim() || 'Check that you are signed in (run "claude" in a terminal).'}`
+        ));
+      } else {
+        resolve();
+      }
+    });
+
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
+/**
+ * Pulls assistant text out of one stream-json line. Returns '' for
+ * non-assistant events (system, result, tool use) and unparseable lines.
+ */
+function extractClaudeText(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const event = JSON.parse(trimmed);
+    if (event.type !== 'assistant' || !Array.isArray(event.message?.content)) {
+      return '';
+    }
+    return event.message.content
+      .map((part: { type?: string; text?: string }) => (part.type === 'text' ? part.text ?? '' : ''))
+      .join('');
+  } catch {
+    return '';
+  }
+}
+
+function buildPrompts(
+  mr: MergeRequest,
+  files: ChangedFile[],
+  aiLanguage: string
+): { systemPrompt: string; userPrompt: string } {
   const diffContent = buildDiffContent(files);
 
   const systemPrompt = `You are a senior software engineer performing a code review.
@@ -68,20 +204,7 @@ Be concise, specific, and constructive.`;
 
 ${diffContent}`;
 
-  const messages = [
-    vscode.LanguageModelChatMessage.User(systemPrompt + '\n\n' + userPrompt),
-  ];
-
-  const response = await model.sendRequest(messages, {}, token);
-
-  for await (const chunk of response.text) {
-    if (token.isCancellationRequested) {
-      break;
-    }
-    onChunk(chunk);
-  }
-
-  onDone();
+  return { systemPrompt, userPrompt };
 }
 
 function buildDiffContent(files: ChangedFile[]): string {
