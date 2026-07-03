@@ -58,6 +58,16 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "gitmerge.mergeSelected",
+        "title": "Merge All",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gitmerge.closeSelected",
+        "title": "Close/Reject All",
+        "icon": "$(close)"
+      },
+      {
         "command": "gitmerge.setGithubToken",
         "title": "GitMerge: Set GitHub Token"
       },
@@ -93,6 +103,16 @@
           "command": "gitmerge.openMR",
           "when": "view == mergeRequestExplorer && viewItem == mergeRequest",
           "group": "inline"
+        },
+        {
+          "command": "gitmerge.mergeSelected",
+          "when": "view == mergeRequestExplorer && viewItem == mergeRequest",
+          "group": "2_bulk@1"
+        },
+        {
+          "command": "gitmerge.closeSelected",
+          "when": "view == mergeRequestExplorer && viewItem == mergeRequest",
+          "group": "2_bulk@2"
         },
         {
           "command": "gitmerge.setGithubToken",

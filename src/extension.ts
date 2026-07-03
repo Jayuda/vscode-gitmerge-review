@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { MergeRequestProvider, MergeRequestNode, outputChannel } from './providers/mergeRequestProvider';
 import { MergeRequestPanel } from './panels/mergeRequestPanel';
 import { MergeRequest } from './models/types';
+import { mergeMergeRequest, closeMergeRequest } from './services/mrActions';
 
 export function activate(context: vscode.ExtensionContext): void {
   const ext = vscode.extensions.getExtension('gitmerge.gitmerge-review');
@@ -14,6 +15,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const treeView = vscode.window.createTreeView('mergeRequestExplorer', {
     treeDataProvider: provider,
     showCollapseAll: true,
+    canSelectMany: true,
   });
   context.subscriptions.push(treeView);
 
@@ -26,6 +28,28 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitmerge.openMR', (mr: MergeRequest) => {
       MergeRequestPanel.createOrShow(context, mr);
     }),
+
+    vscode.commands.registerCommand(
+      'gitmerge.mergeSelected',
+      (node: MergeRequestNode, selected?: MergeRequestNode[]) =>
+        runBulkAction(context, provider, node, selected, {
+          confirmVerb: 'Merge',
+          progressLabel: 'Merging',
+          pastLabel: 'Merged',
+          run: (mr) => mergeMergeRequest(context, mr),
+        })
+    ),
+
+    vscode.commands.registerCommand(
+      'gitmerge.closeSelected',
+      (node: MergeRequestNode, selected?: MergeRequestNode[]) =>
+        runBulkAction(context, provider, node, selected, {
+          confirmVerb: 'Close/Reject',
+          progressLabel: 'Closing',
+          pastLabel: 'Closed',
+          run: (mr) => closeMergeRequest(context, mr),
+        })
+    ),
 
     vscode.commands.registerCommand('gitmerge.configure', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'gitmerge');
@@ -73,6 +97,83 @@ export function activate(context: vscode.ExtensionContext): void {
   provider.load().then(() => {
     promptForTokensIfNeeded(context);
   });
+}
+
+interface BulkActionOptions {
+  confirmVerb: string; // e.g. 'Merge', 'Close/Reject' — used in the confirmation modal
+  progressLabel: string; // e.g. 'Merging', 'Closing' — used in the progress notification title
+  pastLabel: string; // e.g. 'Merged', 'Closed' — used in the summary message
+  run: (mr: MergeRequest) => Promise<void>;
+}
+
+async function runBulkAction(
+  context: vscode.ExtensionContext,
+  provider: MergeRequestProvider,
+  node: MergeRequestNode,
+  selected: MergeRequestNode[] | undefined,
+  options: BulkActionOptions
+): Promise<void> {
+  const nodes = (selected && selected.length > 0 ? selected : [node])
+    .filter((n): n is MergeRequestNode => n instanceof MergeRequestNode);
+
+  // De-dupe by MR id in case the same node appears more than once in the selection.
+  const seen = new Set<number>();
+  const mrs = nodes
+    .map((n) => n.mr)
+    .filter((mr) => {
+      if (seen.has(mr.id)) { return false; }
+      seen.add(mr.id);
+      return true;
+    });
+
+  if (mrs.length === 0) { return; }
+
+  const confirmMessage = mrs.length === 1
+    ? `${options.confirmVerb} "${mrs[0].title}"?`
+    : `${options.confirmVerb} ${mrs.length} merge requests?`;
+  const confirm = await vscode.window.showWarningMessage(
+    confirmMessage,
+    { modal: true },
+    options.confirmVerb
+  );
+  if (confirm !== options.confirmVerb) { return; }
+
+  const failures: { mr: MergeRequest; error: string }[] = [];
+  let succeeded = 0;
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `${options.progressLabel} ${mrs.length} merge request${mrs.length === 1 ? '' : 's'}...`,
+      cancellable: true,
+    },
+    async (progress, token) => {
+      for (let i = 0; i < mrs.length; i++) {
+        if (token.isCancellationRequested) { break; }
+        const mr = mrs[i];
+        progress.report({ message: mr.title, increment: 100 / mrs.length });
+        try {
+          await options.run(mr);
+          succeeded++;
+        } catch (err) {
+          const message = String(err);
+          failures.push({ mr, error: message });
+          outputChannel.appendLine(`[GitMerge] ${options.confirmVerb} failed for "${mr.title}": ${message}`);
+        }
+      }
+    }
+  );
+
+  if (failures.length === 0) {
+    vscode.window.showInformationMessage(`${options.pastLabel} ${succeeded}/${mrs.length} merge requests.`);
+  } else {
+    const detail = failures.map((f) => `${f.mr.title}: ${f.error}`).join('; ');
+    vscode.window.showErrorMessage(
+      `${options.pastLabel} ${succeeded}/${mrs.length} — ${failures.length} failed. ${detail}`
+    );
+  }
+
+  await provider.load();
 }
 
 function setupAutoRefresh(context: vscode.ExtensionContext, provider: MergeRequestProvider): void {

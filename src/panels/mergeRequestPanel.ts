@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { MergeRequest, ChangedFile } from '../models/types';
-import { getGithubPRFiles, getGithubPRDetails, mergeGithubPR, closeGithubPR, postGithubPRComment } from '../services/githubService';
-import { getGitlabMRChanges, mergeGitlabMR, closeGitlabMR, postGitlabMRNote } from '../services/gitlabService';
+import { getGithubPRFiles, getGithubPRDetails, postGithubPRComment } from '../services/githubService';
+import { getGitlabMRChanges, postGitlabMRNote } from '../services/gitlabService';
 import { analyzeChanges } from '../services/aiService';
+import { mergeMergeRequest, closeMergeRequest } from '../services/mrActions';
 import { outputChannel } from '../providers/mergeRequestProvider';
 
 export class MergeRequestPanel {
@@ -187,18 +188,7 @@ export class MergeRequestPanel {
     this._panel.webview.postMessage({ type: 'actionStart', action: 'merge' });
 
     try {
-      const config = vscode.workspace.getConfiguration('gitmerge');
-      if (this._mr.provider === 'github') {
-        const token = await this._context.secrets.get('gitmerge.githubToken');
-        if (!token) { throw new Error('GitHub token not configured.'); }
-        await mergeGithubPR(this._mr.repoOwner, this._mr.repoName, this._mr.number, token, commitMessage);
-      } else {
-        const token = await this._context.secrets.get('gitmerge.gitlabToken');
-        if (!token) { throw new Error('GitLab token not configured.'); }
-        const gitlabUrl: string = config.get('gitlabUrl') ?? 'https://gitlab.com';
-        const projectId = (this._mr as MergeRequest & { gitlabProjectId?: string | number }).gitlabProjectId ?? `${this._mr.repoOwner}/${this._mr.repoName}`;
-        await mergeGitlabMR(projectId, this._mr.iid, token, gitlabUrl);
-      }
+      await mergeMergeRequest(this._context, this._mr, commitMessage);
       this._panel.webview.postMessage({ type: 'actionDone', action: 'merge', success: true });
       vscode.window.showInformationMessage(`Merged: ${this._mr.title}`);
     } catch (err) {
@@ -244,18 +234,7 @@ export class MergeRequestPanel {
     this._panel.webview.postMessage({ type: 'actionStart', action: 'reject' });
 
     try {
-      const config = vscode.workspace.getConfiguration('gitmerge');
-      if (this._mr.provider === 'github') {
-        const token = await this._context.secrets.get('gitmerge.githubToken');
-        if (!token) { throw new Error('GitHub token not configured.'); }
-        await closeGithubPR(this._mr.repoOwner, this._mr.repoName, this._mr.number, token);
-      } else {
-        const token = await this._context.secrets.get('gitmerge.gitlabToken');
-        if (!token) { throw new Error('GitLab token not configured.'); }
-        const gitlabUrl: string = config.get('gitlabUrl') ?? 'https://gitlab.com';
-        const projectId = (this._mr as MergeRequest & { gitlabProjectId?: string | number }).gitlabProjectId ?? `${this._mr.repoOwner}/${this._mr.repoName}`;
-        await closeGitlabMR(projectId, this._mr.iid, token, gitlabUrl);
-      }
+      await closeMergeRequest(this._context, this._mr);
       this._panel.webview.postMessage({ type: 'actionDone', action: 'reject', success: true });
       vscode.window.showInformationMessage(`Closed: ${this._mr.title}`);
     } catch (err) {
